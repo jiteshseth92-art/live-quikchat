@@ -1,32 +1,151 @@
-body {
+* {
   margin: 0;
-  font-family: Arial, sans-serif;
-  background: #111;
+  padding: 0;
+  box-sizing: border-box;
+  font-family: 'Poppins', sans-serif;
+}
+
+body {
+  background: #0f0f14;
   color: #fff;
-  text-align: center;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
 }
 
 .container {
-  padding: 20px;
+  width: 100%;
+  max-width: 950px;
+  padding: 10px;
+}
+
+.video-area {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
 }
 
 video {
-  width: 45%;
-  margin: 10px;
-  background: #000;
+  width: 48%;
+  height: 300px;
+  background: #111;
   border-radius: 10px;
+  object-fit: cover;
+}
+
+.controls {
+  margin-top: 10px;
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 
 button {
-  padding: 12px 25px;
-  font-size: 18px;
-  background: #00c853;
-  border: none;
+  background: #1a1a1f;
+  border: 1px solid #333;
+  padding: 10px 16px;
+  border-radius: 6px;
   color: #fff;
-  border-radius: 8px;
   cursor: pointer;
+  transition: 0.3s;
+  font-size: 14px;
 }
 
 button:hover {
-  background: #00e676;
+  background: #444;
+}
+
+button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.status-bar {
+  text-align: center;
+  margin: 8px 0;
+  font-size: 16px;
+  color: #0ff;
+  font-weight: 600;
+}
+
+.chat-box {
+  width: 100%;
+  height: 180px;
+  background: #111;
+  margin-top: 10px;
+  border-radius: 8px;
+  padding: 10px;
+  overflow-y: auto;
+  font-size: 14px;
+}
+
+.chat-self {
+  background: #005eff;
+  padding: 6px 10px;
+  margin: 5px 0;
+  width: fit-content;
+  border-radius: 6px;
+  margin-left: auto;
+}
+
+.chat-peer {
+  background: #272727;
+  padding: 6px 10px;
+  margin: 5px 0;
+  width: fit-content;
+  border-radius: 6px;
+}
+
+.chat-input-area {
+  margin-top: 8px;
+  display: flex;
+  gap: 5px;
+}
+
+input {
+  flex: 1;
+  padding: 10px;
+  border-radius: 6px;
+  border: none;
+  outline: none;
+  background: #222;
+  color: #fff;
+  font-size: 14px;
+}
+
+#sendChat {
+  background: #005eff;
+}
+
+.select-area {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+select, .name-input {
+  flex: 1;
+  padding: 10px;
+  border-radius: 6px;
+  border: none;
+  outline: none;
+  background: #222;
+  color: #fff;
+  font-size: 14px;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  video {
+    width: 100%;
+    height: 250px;
+  }
+
+  .video-area {
+    flex-direction: column;
+  }
 }
