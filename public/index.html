@@ -1,71 +1,24 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>QuikChat Live</title>
-
-  <style>
-    body {
-      margin: 0;
-      padding: 0;
-      background: #000;
-      color: #fff;
-      text-align: center;
-      font-family: Arial, sans-serif;
-    }
-
-    h2 {
-      margin-top: 15px;
-      color: #00eaff;
-    }
-
-    video {
-      width: 45%;
-      background: #222;
-      margin: 5px;
-      border-radius: 10px;
-    }
-
-    #findBtn {
-      margin-top: 15px;
-      padding: 12px 30px;
-      background: #00eaff;
-      border: none;
-      border-radius: 10px;
-      color: #000;
-      font-size: 18px;
-      font-weight: bold;
-      cursor: pointer;
-    }
-
-    #findBtn:disabled {
-      background: #666;
-      cursor: not-allowed;
-    }
-
-    .container {
-      display: flex;
-      justify-content: center;
-      flex-wrap: wrap;
-      margin-top: 10px;
-    }
-  </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>QuikChat</title>
+  <link rel="stylesheet" href="style.css" />
 </head>
-
 <body>
 
-  <h2>QuikChat Live Video</h2>
+  <h1>QuikChat</h1>
 
-  <div class="container">
+  <div class="videos">
     <video id="localVideo" autoplay playsinline muted></video>
     <video id="remoteVideo" autoplay playsinline></video>
   </div>
 
   <button id="findBtn">Find Partner</button>
+  <button id="leaveBtn" style="display:none;">Leave</button>
 
   <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-  <script src="script.js"></script>
-
+  <script src="app.js"></script>
 </body>
 </html>
