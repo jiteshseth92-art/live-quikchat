@@ -1,74 +1,80 @@
-const express = require("express");
-const http = require("http");
-const { Server } = require("socket.io");
-const path = require("path");
+const socket = io("https://live-quikchat.onrender.com"); // YOUR RENDER URL
+let localStream, peerConnection, partnerId;
 
-const app = express();
-const server = http.createServer(app);
+const findBtn = document.getElementById("findBtn");
+const leaveBtn = document.getElementById("leaveBtn");
+const localVideo = document.getElementById("localVideo");
+const remoteVideo = document.getElementById("remoteVideo");
 
-const io = new Server(server, {
-  cors: {
-    origin: "*",
-    methods: ["GET", "POST"]
+findBtn.onclick = () => {
+  socket.emit("find");
+  findBtn.innerText = "Searching...";
+};
+
+leaveBtn.onclick = () => {
+  socket.emit("leave");
+  endCall();
+};
+
+socket.on("connecting", () => {
+  console.log("connecting…");
+});
+
+socket.on("partner", async (id) => {
+  partnerId = id;
+  console.log("Partner found:", id);
+  findBtn.style.display = "none";
+  leaveBtn.style.display = "block";
+  await startCall(true);
+});
+
+socket.on("offer", async (data) => {
+  await startCall(false);
+  await peerConnection.setRemoteDescription(data.sdp);
+  const answer = await peerConnection.createAnswer();
+  await peerConnection.setLocalDescription(answer);
+  socket.emit("answer", { to: data.from, sdp: answer });
+});
+
+socket.on("answer", async (data) => {
+  await peerConnection.setRemoteDescription(data.sdp);
+});
+
+socket.on("ice", async (data) => {
+  if (data.candidate) await peerConnection.addIceCandidate(data.candidate);
+});
+
+async function startCall(isCaller) {
+  localStream = await navigator.mediaDevices.getUserMedia({
+    video: true,
+    audio: true,
+  });
+
+  localVideo.srcObject = localStream;
+
+  peerConnection = new RTCPeerConnection({
+    iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+  });
+
+  localStream.getTracks().forEach((track) => {
+    peerConnection.addTrack(track, localStream);
+  });
+
+  peerConnection.onicecandidate = (e) => {
+    if (e.candidate) socket.emit("ice", { to: partnerId, candidate: e.candidate });
+  };
+
+  peerConnection.ontrack = (e) => {
+    remoteVideo.srcObject = e.streams[0];
+  };
+
+  if (isCaller) {
+    const offer = await peerConnection.createOffer();
+    await peerConnection.setLocalDescription(offer);
+    socket.emit("offer", { to: partnerId, sdp: offer });
   }
-});
-
-app.use(express.static(path.join(__dirname, "public")));
-
-let waitingUser = null;
-
-io.on("connection", (socket) => {
-  console.log("User connected:", socket.id);
-
-  socket.on("findPartner", () => {
-    if (!waitingUser) {
-      waitingUser = socket;
-      socket.emit("waiting");
-    } else {
-      const room = `room_${waitingUser.id}_${socket.id}`;
-      socket.join(room);
-      waitingUser.join(room);
-
-      waitingUser.emit("partnerFound", { room, initiator: true });
-      socket.emit("partnerFound", { room, initiator: false });
-
-      waitingUser = null;
-    }
-  });
-
-  socket.on("offer", (data) => {
-    socket.to(getRoom(socket)).emit("offer", data);
-  });
-
-  socket.on("answer", (data) => {
-    socket.to(getRoom(socket)).emit("answer", data);
-  });
-
-  socket.on("candidate", (data) => {
-    socket.to(getRoom(socket)).emit("candidate", data);
-  });
-
-  socket.on("chat", (msg) => {
-    socket.to(getRoom(socket)).emit("chat", msg);
-  });
-
-  socket.on("leave", () => {
-    socket.to(getRoom(socket)).emit("peer-left");
-    socket.leave(getRoom(socket));
-  });
-
-  socket.on("disconnect", () => {
-    socket.to(getRoom(socket)).emit("peer-left");
-    if (waitingUser === socket) waitingUser = null;
-    console.log("User disconnected:", socket.id);
-  });
-});
-
-function getRoom(socket) {
-  return [...socket.rooms][1];
 }
 
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log(`Server running on ${PORT}`);
-});
+function endCall() {
+  location.reload();
+}
