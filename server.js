@@ -1,82 +1,60 @@
-const express = require("express");
-const http = require("http");
-const { Server } = require("socket.io");
+
+import express from "express";
+import http from "http";
+import { Server } from "socket.io";
+import cors from "cors";
 
 const app = express();
+app.use(cors());
 const server = http.createServer(app);
+
 const io = new Server(server, {
-  cors: { origin: "*" }
-});
-
-let waitingUser = null;
-let rooms = {};
-
-io.on("connection", (socket) => {
-  console.log("Connected:", socket.id);
-
-  socket.on("findPartner", () => {
-    if (waitingUser && waitingUser !== socket.id) {
-      const room = socket.id + "#" + waitingUser;
-
-      rooms[socket.id] = room;
-      rooms[waitingUser] = room;
-
-      socket.join(room);
-      io.sockets.sockets.get(waitingUser).join(room);
-
-      io.to(socket.id).emit("partnerFound", { room, initiator: true });
-      io.to(waitingUser).emit("partnerFound", { room, initiator: false });
-
-      console.log("Room Created:", room);
-      waitingUser = null;
-    } else {
-      waitingUser = socket.id;
-      socket.emit("waiting");
-      console.log("Waiting:", socket.id);
-    }
-  });
-
-  socket.on("offer", (sdp) => {
-    const room = rooms[socket.id];
-    socket.to(room).emit("offer", { sdp });
-  });
-
-  socket.on("answer", (sdp) => {
-    const room = rooms[socket.id];
-    socket.to(room).emit("answer", { sdp });
-  });
-
-  socket.on("candidate", (candidate) => {
-    const room = rooms[socket.id];
-    socket.to(room).emit("candidate", candidate);
-  });
-
-  socket.on("chat", (data) => {
-    const room = rooms[socket.id];
-    socket.to(room).emit("chat", data);
-  });
-
-  socket.on("leave", () => {
-    disconnectCleanup(socket);
-  });
-
-  socket.on("disconnect", () => {
-    disconnectCleanup(socket);
-  });
-
-  function disconnectCleanup(s) {
-    const room = rooms[s.id];
-    if (!room) return;
-
-    s.to(room).emit("peer-left");
-
-    delete rooms[s.id];
-
-    if (waitingUser === s.id) waitingUser = null;
-    console.log("Disconnected:", s.id);
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"]
   }
 });
 
-server.listen(3000, () => {
-  console.log("SERVER STARTED ON PORT 3000");
+let waitingUser = null;
+
+io.on("connection", (socket) => {
+  console.log("User connected:", socket.id);
+
+  socket.on("findPartner", () => {
+    if (waitingUser) {
+      io.to(waitingUser).emit("partnerFound", socket.id);
+      io.to(socket.id).emit("partnerFound", waitingUser);
+      waitingUser = null;
+    } else {
+      waitingUser = socket.id;
+    }
+  });
+
+  socket.on("offer", (data) => {
+    io.to(data.partnerId).emit("offer", {
+      offer: data.offer,
+      from: socket.id
+    });
+  });
+
+  socket.on("answer", (data) => {
+    io.to(data.partnerId).emit("answer", {
+      answer: data.answer,
+      from: socket.id
+    });
+  });
+
+  socket.on("iceCandidate", (data) => {
+    io.to(data.partnerId).emit("iceCandidate", data.candidate);
+  });
+
+  socket.on("disconnect", () => {
+    console.log("User disconnected:", socket.id);
+    if (waitingUser === socket.id) waitingUser = null;
+  });
+});
+
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+  console.log("Server running on port", PORT);
 });
