@@ -16,11 +16,19 @@ const io = new Server(server, {
   },
 });
 
+let waitingUser = null;
+
 io.on("connection", (socket) => {
   console.log("User connected:", socket.id);
 
   socket.on("find-partner", () => {
-    socket.broadcast.emit("partner-found", socket.id);
+    if (waitingUser && waitingUser !== socket.id) {
+      socket.emit("partner-found", waitingUser);
+      io.to(waitingUser).emit("partner-found", socket.id);
+      waitingUser = null;
+    } else {
+      waitingUser = socket.id;
+    }
   });
 
   socket.on("offer", (data) => {
@@ -37,6 +45,7 @@ io.on("connection", (socket) => {
 
   socket.on("disconnect", () => {
     console.log("User disconnected:", socket.id);
+    if (waitingUser === socket.id) waitingUser = null;
     socket.broadcast.emit("partner-left");
   });
 });
