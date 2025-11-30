@@ -1,41 +1,51 @@
 const express = require("express");
 const app = express();
-const http = require("http").createServer(app);
-const io = require("socket.io")(http, {
+const http = require("http");
+const server = http.createServer(app);
+const { Server } = require("socket.io");
+const cors = require("cors");
+
+app.use(cors());
+app.use(express.static("public")); // index.html yahi folder me hoga
+
+const io = new Server(server, {
   cors: {
     origin: "*",
-  },
+    methods: ["GET", "POST"]
+  }
 });
 
-const path = require("path");
-
-app.use(express.static(path.join(__dirname, "public")));
+let waitingUsers = [];
 
 io.on("connection", (socket) => {
-  console.log("A user connected: " + socket.id);
+  console.log("User connected:", socket.id);
 
-  socket.on("findPartner", () => {
-    socket.broadcast.emit("partnerFound", socket.id);
+  socket.on("find_partner", () => {
+    if (waitingUsers.length > 0) {
+      const partner = waitingUsers.pop();
+
+      socket.emit("partner_found", partner);
+      io.to(partner).emit("partner_found", socket.id);
+    } else {
+      waitingUsers.push(socket.id);
+    }
   });
 
-  socket.on("offer", (data) => {
-    socket.to(data.partnerId).emit("offer", data.offer);
-  });
-
-  socket.on("answer", (data) => {
-    socket.to(data.partnerId).emit("answer", data.answer);
-  });
-
-  socket.on("iceCandidate", (data) => {
-    socket.to(data.partnerId).emit("iceCandidate", data.candidate);
+  socket.on("signal", (data) => {
+    io.to(data.to).emit("signal", {
+      from: socket.id,
+      sdp: data.sdp
+    });
   });
 
   socket.on("disconnect", () => {
-    console.log("User disconnected: " + socket.id);
+    waitingUsers = waitingUsers.filter((id) => id !== socket.id);
+    console.log("Disconnected:", socket.id);
   });
 });
 
+// Render PORT fix
 const PORT = process.env.PORT || 10000;
-http.listen(PORT, () => {
-  console.log("Server running on port " + PORT);
+server.listen(PORT, () => {
+  console.log("Server running on port:", PORT);
 });
