@@ -1,5 +1,5 @@
 const socket = io("https://live-quikchat-1-3ima.onrender.com", {
-  transports: ["websocket"],
+  transports: ["websocket"]
 });
 
 const localVideo = document.getElementById("localVideo");
@@ -17,18 +17,26 @@ const config = {
 };
 
 findBtn.addEventListener("click", async () => {
-  findBtn.disabled = true;
+  findBtn.innerText = "Searching...";
+  socket.emit("find-partner");
 
   localStream = await navigator.mediaDevices.getUserMedia({
     video: true,
-    audio: true
+    audio: true,
   });
 
   localVideo.srcObject = localStream;
+});
+
+socket.on("partner-found", async (partnerId) => {
+  console.log("Partner found", partnerId);
+
+  findBtn.style.display = "none";
+  leaveBtn.style.display = "inline-block";
 
   peerConnection = new RTCPeerConnection(config);
 
-  localStream.getTracks().forEach(track => {
+  localStream.getTracks().forEach((track) => {
     peerConnection.addTrack(track, localStream);
   });
 
@@ -38,34 +46,58 @@ findBtn.addEventListener("click", async () => {
 
   peerConnection.onicecandidate = (event) => {
     if (event.candidate) {
-      socket.emit("ice-candidate", event.candidate);
+      socket.emit("candidate", {
+        to: partnerId,
+        candidate: event.candidate,
+      });
     }
   };
 
-  socket.emit("find");
-});
-
-socket.on("found", async () => {
   const offer = await peerConnection.createOffer();
   await peerConnection.setLocalDescription(offer);
-  socket.emit("offer", offer);
+
+  socket.emit("offer", { to: partnerId, offer });
 });
 
-socket.on("offer", async (offer) => {
-  await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+socket.on("offer", async (data) => {
+  peerConnection = new RTCPeerConnection(config);
+
+  localStream.getTracks().forEach((track) => {
+    peerConnection.addTrack(track, localStream);
+  });
+
+  peerConnection.ontrack = (event) => {
+    remoteVideo.srcObject = event.streams[0];
+  };
+
+  peerConnection.onicecandidate = (event) => {
+    if (event.candidate) {
+      socket.emit("candidate", {
+        to: data.from,
+        candidate: event.candidate,
+      });
+    }
+  };
+
+  await peerConnection.setRemoteDescription(data.offer);
   const answer = await peerConnection.createAnswer();
   await peerConnection.setLocalDescription(answer);
-  socket.emit("answer", answer);
+
+  socket.emit("answer", { to: data.from, answer });
 });
 
-socket.on("answer", (answer) => {
-  peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+socket.on("answer", async (data) => {
+  await peerConnection.setRemoteDescription(data.answer);
 });
 
-socket.on("ice-candidate", (candidate) => {
-  peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+socket.on("candidate", async (data) => {
+  try {
+    await peerConnection.addIceCandidate(data.candidate);
+  } catch (e) {
+    console.error(e);
+  }
 });
 
 leaveBtn.addEventListener("click", () => {
-  location.reload();
+  window.location.reload();
 });
