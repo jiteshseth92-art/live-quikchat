@@ -1,4 +1,4 @@
-const socket = io("https://YOUR-RENDER-LINK-HERE", {
+const socket = io("https://live-quikchat-1-3ima.onrender.com", {
   transports: ["websocket"],
 });
 
@@ -8,29 +8,29 @@ const findBtn = document.getElementById("findBtn");
 const leaveBtn = document.getElementById("leaveBtn");
 
 let peerConnection;
-let partnerId;
+let localStream;
+
 const config = {
-  iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+  iceServers: [
+    { urls: "stun:stun.l.google.com:19302" }
+  ]
 };
 
-async function startCamera() {
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-    localVideo.srcObject = stream;
-    return stream;
-  } catch (err) {
-    alert("Camera & Mic Permission Blocked! Please allow.");
-    console.error(err);
-  }
-}
+findBtn.addEventListener("click", async () => {
+  findBtn.disabled = true;
 
-findBtn.onclick = async () => {
-  const stream = await startCamera();
-  if (!stream) return;
+  localStream = await navigator.mediaDevices.getUserMedia({
+    video: true,
+    audio: true
+  });
+
+  localVideo.srcObject = localStream;
 
   peerConnection = new RTCPeerConnection(config);
 
-  stream.getTracks().forEach((track) => peerConnection.addTrack(track, stream));
+  localStream.getTracks().forEach(track => {
+    peerConnection.addTrack(track, localStream);
+  });
 
   peerConnection.ontrack = (event) => {
     remoteVideo.srcObject = event.streams[0];
@@ -38,62 +38,34 @@ findBtn.onclick = async () => {
 
   peerConnection.onicecandidate = (event) => {
     if (event.candidate) {
-      socket.emit("candidate", { candidate: event.candidate, to: partnerId });
+      socket.emit("ice-candidate", event.candidate);
     }
   };
 
-  socket.emit("find-partner");
+  socket.emit("find");
+});
 
-  findBtn.style.display = "none";
-  leaveBtn.style.display = "inline-block";
-};
-
-socket.on("partner-found", async (id) => {
-  partnerId = id;
-
+socket.on("found", async () => {
   const offer = await peerConnection.createOffer();
   await peerConnection.setLocalDescription(offer);
-
-  socket.emit("offer", { offer, to: partnerId });
+  socket.emit("offer", offer);
 });
 
-socket.on("offer", async ({ offer, to }) => {
-  partnerId = to;
-
-  const stream = await startCamera();
-  peerConnection = new RTCPeerConnection(config);
-
-  stream.getTracks().forEach((track) => peerConnection.addTrack(track, stream));
-
-  peerConnection.ontrack = (event) => {
-    remoteVideo.srcObject = event.streams[0];
-  };
-
+socket.on("offer", async (offer) => {
   await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
-
   const answer = await peerConnection.createAnswer();
   await peerConnection.setLocalDescription(answer);
-
-  socket.emit("answer", { answer, to: partnerId });
+  socket.emit("answer", answer);
 });
 
-socket.on("answer", async ({ answer }) => {
-  await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+socket.on("answer", (answer) => {
+  peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
 });
 
-socket.on("candidate", async ({ candidate }) => {
-  try {
-    await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
-  } catch (err) {
-    console.error("ICE error:", err);
-  }
+socket.on("ice-candidate", (candidate) => {
+  peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
 });
 
-leaveBtn.onclick = () => {
-  window.location.reload();
-};
-
-socket.on("partner-left", () => {
-  alert("Partner disconnected!");
-  window.location.reload();
+leaveBtn.addEventListener("click", () => {
+  location.reload();
 });
