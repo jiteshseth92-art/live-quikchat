@@ -1,85 +1,39 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>QuikChat — Live</title>
-
-  <link rel="stylesheet" href="style.css" />
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QuikChat</title>
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div id="app">
 
-    <header>
-      <h1>QuikChat</h1>
-      <div id="statusTop">Ready</div>
-    </header>
+    <div class="app-container">
 
-    <section class="video-wrap">
-      <div class="video-card">
-        <div class="label">Remote</div>
-        <div class="video-box">
-          <video id="remoteVideo" autoplay playsinline></video>
+        <header>
+            <h2>QuikChat 💬</h2>
+            <button id="findBtn">Find Partner</button>
+        </header>
+
+        <div id="chat-box" class="chat-box"></div>
+
+        <div class="input-area">
+            <input id="messageInput" type="text" placeholder="Type a message..." autocomplete="off"/>
+            <button id="sendBtn">Send</button>
+            <button id="stickerBtn">😊</button>
         </div>
-      </div>
 
-      <div class="video-card">
-        <div class="label">You</div>
-        <div class="video-box">
-          <video id="localVideo" autoplay muted playsinline></video>
+        <!-- Sticker Panel -->
+        <div id="stickerPanel" class="sticker-panel hidden">
+            <img src="stickers/laugh.png" class="sticker" onclick="sendSticker('stickers/laugh.png')">
+            <img src="stickers/love.png" class="sticker" onclick="sendSticker('stickers/love.png')">
+            <img src="stickers/sad.png" class="sticker" onclick="sendSticker('stickers/sad.png')">
+            <img src="stickers/angry.png" class="sticker" onclick="sendSticker('stickers/angry.png')">
         </div>
-      </div>
-    </section>
 
-    <!-- Camera Start -->
-    <div style="text-align:center; margin-top:15px;">
-      <button id="startCamBtn" class="primary">Start Camera</button>
     </div>
 
-    <div class="controls">
-      <button id="findBtn" disabled class="primary">Find</button>
-      <button id="nextBtn" disabled>Next</button>
-      <button id="disconnectBtn" disabled>End</button>
-
-      <div class="center-controls">
-        <button id="muteBtn">Mute</button>
-        <button id="videoBtn">Video Off</button>
-        <button id="switchCamBtn">Switch Cam</button>
-        <div id="timer">00:00</div>
-      </div>
-    </div>
-
-    <div id="searchAnim" style="display:none">Searching…</div>
-
-  </div>
-
-  <!-- SOCKET & SCRIPT -->
-  <script src="/socket.io/socket.io.js"></script>
-  <script>
-    const localVideo = document.getElementById("localVideo");
-    const startCamBtn = document.getElementById("startCamBtn");
-    const findBtn = document.getElementById("findBtn");
-
-    startCamBtn.addEventListener("click", async () => {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: true,
-          audio: true
-        });
-
-        localVideo.srcObject = stream;
-        window.localStream = stream;
-
-        findBtn.disabled = false;
-        startCamBtn.innerText = "Camera Ready";
-        startCamBtn.disabled = true;
-
-      } catch (err) {
-        alert("Camera Permission Required");
-        console.error(err);
-      }
-    });
-  </script>
-  <script src="script.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="Script.js"></script>
 </body>
 </html>
