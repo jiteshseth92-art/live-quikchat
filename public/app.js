@@ -1,80 +1,99 @@
-const socket = io("https://live-quikchat.onrender.com"); // YOUR RENDER URL
-let localStream, peerConnection, partnerId;
+const socket = io("https://YOUR-RENDER-LINK-HERE", {
+  transports: ["websocket"],
+});
 
-const findBtn = document.getElementById("findBtn");
-const leaveBtn = document.getElementById("leaveBtn");
 const localVideo = document.getElementById("localVideo");
 const remoteVideo = document.getElementById("remoteVideo");
+const findBtn = document.getElementById("findBtn");
+const leaveBtn = document.getElementById("leaveBtn");
 
-findBtn.onclick = () => {
-  socket.emit("find");
-  findBtn.innerText = "Searching...";
+let peerConnection;
+let partnerId;
+const config = {
+  iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
 };
 
-leaveBtn.onclick = () => {
-  socket.emit("leave");
-  endCall();
-};
-
-socket.on("connecting", () => {
-  console.log("connecting…");
-});
-
-socket.on("partner", async (id) => {
-  partnerId = id;
-  console.log("Partner found:", id);
-  findBtn.style.display = "none";
-  leaveBtn.style.display = "block";
-  await startCall(true);
-});
-
-socket.on("offer", async (data) => {
-  await startCall(false);
-  await peerConnection.setRemoteDescription(data.sdp);
-  const answer = await peerConnection.createAnswer();
-  await peerConnection.setLocalDescription(answer);
-  socket.emit("answer", { to: data.from, sdp: answer });
-});
-
-socket.on("answer", async (data) => {
-  await peerConnection.setRemoteDescription(data.sdp);
-});
-
-socket.on("ice", async (data) => {
-  if (data.candidate) await peerConnection.addIceCandidate(data.candidate);
-});
-
-async function startCall(isCaller) {
-  localStream = await navigator.mediaDevices.getUserMedia({
-    video: true,
-    audio: true,
-  });
-
-  localVideo.srcObject = localStream;
-
-  peerConnection = new RTCPeerConnection({
-    iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
-  });
-
-  localStream.getTracks().forEach((track) => {
-    peerConnection.addTrack(track, localStream);
-  });
-
-  peerConnection.onicecandidate = (e) => {
-    if (e.candidate) socket.emit("ice", { to: partnerId, candidate: e.candidate });
-  };
-
-  peerConnection.ontrack = (e) => {
-    remoteVideo.srcObject = e.streams[0];
-  };
-
-  if (isCaller) {
-    const offer = await peerConnection.createOffer();
-    await peerConnection.setLocalDescription(offer);
-    socket.emit("offer", { to: partnerId, sdp: offer });
+async function startCamera() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+    localVideo.srcObject = stream;
+    return stream;
+  } catch (err) {
+    alert("Camera & Mic Permission Blocked! Please allow.");
+    console.error(err);
   }
 }
 
-function endCall() {
-  location.reload();
-}
+findBtn.onclick = async () => {
+  const stream = await startCamera();
+  if (!stream) return;
+
+  peerConnection = new RTCPeerConnection(config);
+
+  stream.getTracks().forEach((track) => peerConnection.addTrack(track, stream));
+
+  peerConnection.ontrack = (event) => {
+    remoteVideo.srcObject = event.streams[0];
+  };
+
+  peerConnection.onicecandidate = (event) => {
+    if (event.candidate) {
+      socket.emit("candidate", { candidate: event.candidate, to: partnerId });
+    }
+  };
+
+  socket.emit("find-partner");
+
+  findBtn.style.display = "none";
+  leaveBtn.style.display = "inline-block";
+};
+
+socket.on("partner-found", async (id) => {
+  partnerId = id;
+
+  const offer = await peerConnection.createOffer();
+  await peerConnection.setLocalDescription(offer);
+
+  socket.emit("offer", { offer, to: partnerId });
+});
+
+socket.on("offer", async ({ offer, to }) => {
+  partnerId = to;
+
+  const stream = await startCamera();
+  peerConnection = new RTCPeerConnection(config);
+
+  stream.getTracks().forEach((track) => peerConnection.addTrack(track, stream));
+
+  peerConnection.ontrack = (event) => {
+    remoteVideo.srcObject = event.streams[0];
+  };
+
+  await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+
+  const answer = await peerConnection.createAnswer();
+  await peerConnection.setLocalDescription(answer);
+
+  socket.emit("answer", { answer, to: partnerId });
+});
+
+socket.on("answer", async ({ answer }) => {
+  await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+});
+
+socket.on("candidate", async ({ candidate }) => {
+  try {
+    await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+  } catch (err) {
+    console.error("ICE error:", err);
+  }
+});
+
+leaveBtn.onclick = () => {
+  window.location.reload();
+};
+
+socket.on("partner-left", () => {
+  alert("Partner disconnected!");
+  window.location.reload();
+});
