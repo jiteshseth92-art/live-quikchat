@@ -1,9 +1,6 @@
 const express = require("express");
 const app = express();
 const http = require("http").Server(app);
-
-app.use(express.static("public")); // ⭐ Serve front-end files
-
 const io = require("socket.io")(http, {
   cors: {
     origin: "*",
@@ -27,10 +24,7 @@ io.on("connection", (socket) => {
   });
 
   socket.on("offer", (data) => {
-    io.to(data.partner).emit("offer", {
-      offer: data.offer,
-      from: socket.id
-    });
+    io.to(data.partner).emit("offer", { offer: data.offer, from: socket.id });
   });
 
   socket.on("answer", (data) => {
@@ -41,21 +35,14 @@ io.on("connection", (socket) => {
     io.to(data.partner).emit("ice-candidate", data.candidate);
   });
 
-  socket.on("message", (data) => {
-    io.to(data.partner).emit("message", {
-      text: data.text,
-      from: socket.id
-    });
-  });
-
   socket.on("disconnect", () => {
-    waitingUsers = waitingUsers.filter((id) => id !== socket.id);
-    console.log("User disconnected", socket.id);
+    waitingUsers = waitingUsers.filter(id => id !== socket.id);
+    console.log("User disconnected:", socket.id);
   });
 });
 
 app.get("/", (req, res) => {
-  res.send("QuikChat Signaling Server Running OK 👍");
+  res.send("Video Chat Server Running");
 });
 
 const PORT = process.env.PORT || 3000;
