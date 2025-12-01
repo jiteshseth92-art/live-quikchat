@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -9,25 +10,21 @@
 
 <body>
 
-  <header class="topbar">
-    <h2>QuikChat</h2>
-    <button id="findBtn">Find Partner</button>
-    <button id="callBtn">Call</button>
-    <input type="file" id="fileInput" style="display:none" />
-    <button id="fileBtn">File</button>
-  </header>
+<header class="topbar">
+  <h2>QuikChat</h2>
+  <button id="callBtn">📞 Call</button>
+</header>
 
-  <div id="messages" class="messages"></div>
+<div id="chatBox" class="messages"></div>
 
-  <div class="input-box">
-    <input id="messageInput" placeholder="Type a message..." />
-    <button id="sendBtn">Send</button>
-  </div>
+<div class="input-area">
+  <input id="msgInput" placeholder="Type message..." />
+  <button id="sendBtn">Send</button>
+</div>
 
-  <video id="localVideo" autoplay playsinline muted class="video"></video>
-  <video id="remoteVideo" autoplay playsinline class="video"></video>
+<button id="findBtn" class="find-btn">Find Partner</button>
 
-  <script src="/socket.io/socket.io.js"></script>
-  <script src="script.js"></script>
+<script src="/socket.io/socket.io.js"></script>
+<script src="script.js"></script>
 </body>
 </html>
