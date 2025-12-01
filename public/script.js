@@ -1,42 +1,70 @@
-
 const socket = io("https://live-quikchat-3-fczj.onrender.com", {
   transports: ["websocket"]
 });
 
-let remoteId = null;
+const localVideo = document.getElementById("localVideo");
+const remoteVideo = document.getElementById("remoteVideo");
+const findBtn = document.getElementById("findBtn");
 
-// FIND PARTNER BUTTON
-document.getElementById("findBtn").onclick = () => {
-  socket.emit("findPartner");
+let peerConnection;
+let partnerId;
+
+const config = {
+  iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
 };
 
-// PARTNER FOUND
-socket.on("partnerFound", (id) => {
-  remoteId = id;
-  addMessage("Partner connected 🎉", "them");
-});
+async function startCall() {
+  const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+  localVideo.srcObject = stream;
 
-// SEND MESSAGE
-document.getElementById("sendBtn").onclick = () => {
-  const text = document.getElementById("msgInput").value.trim();
-  if (!text || !remoteId) return;
+  peerConnection = new RTCPeerConnection(config);
+  stream.getTracks().forEach(track => peerConnection.addTrack(track, stream));
 
-  socket.emit("message", { partner: remoteId, text });
-  addMessage(text, "me");
-  document.getElementById("msgInput").value = "";
-};
+  peerConnection.ontrack = (event) => {
+    remoteVideo.srcObject = event.streams[0];
+  };
 
-// RECEIVE MESSAGE
-socket.on("message", (data) => {
-  addMessage(data.text, "them");
-});
-
-// ADD MESSAGE TO CHAT UI
-function addMessage(message, type) {
-  const chatBox = document.getElementById("chatBox");
-  const bubble = document.createElement("div");
-  bubble.className = `bubble ${type}`;
-  bubble.innerText = message;
-  chatBox.appendChild(bubble);
-  chatBox.scrollTop = chatBox.scrollHeight;
+  peerConnection.onicecandidate = (event) => {
+    if (event.candidate) {
+      socket.emit("ice-candidate", { candidate: event.candidate, partner: partnerId });
+    }
+  };
 }
+
+findBtn.addEventListener("click", () => {
+  socket.emit("findPartner");
+});
+
+socket.on("partnerFound", async (id) => {
+  partnerId = id;
+  await startCall();
+
+  const offer = await peerConnection.createOffer();
+  await peerConnection.setLocalDescription(offer);
+
+  socket.emit("offer", { offer: offer, partner: partnerId });
+});
+
+socket.on("offer", async (data) => {
+  partnerId = data.from;
+
+  await startCall();
+  await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
+
+  const answer = await peerConnection.createAnswer();
+  await peerConnection.setLocalDescription(answer);
+
+  socket.emit("answer", { answer: answer, partner: partnerId });
+});
+
+socket.on("answer", async (answer) => {
+  await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+});
+
+socket.on("ice-candidate", async (candidate) => {
+  try {
+    await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+  } catch (e) {
+    console.error("ICE Add Error:", e);
+  }
+});
