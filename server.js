@@ -1,61 +1,51 @@
 const express = require("express");
+const http = require("http");
+const { Server } = require("socket.io");
+require("dotenv").config();
+
 const app = express();
-const http = require("http").Server(app);
-const io = require("socket.io")(http, {
-  cors: { origin: "*", methods: ["GET", "POST"] }
+const server = http.createServer(app);
+
+const io = new Server(server, {
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"]
+  }
 });
-
-// serve public files
-const path = require("path");
-app.use(express.static(path.join(__dirname, "public")));
-
-let waitingUsers = [];
 
 io.on("connection", (socket) => {
   console.log("User connected:", socket.id);
 
   socket.on("find", () => {
-    if (waitingUsers.length > 0) {
-      const partner = waitingUsers.pop();
-      io.to(socket.id).emit("matched", { partner });
-      io.to(partner).emit("matched", { partner: socket.id });
-    } else {
-      waitingUsers.push(socket.id);
-      socket.emit("waiting");
-    }
+    socket.broadcast.emit("found", socket.id);
   });
 
   socket.on("offer", (data) => {
-    io.to(data.to).emit("offer", { from: socket.id, sdp: data.sdp });
+    socket.to(data.to).emit("offer", data.offer);
   });
 
   socket.on("answer", (data) => {
-    io.to(data.to).emit("answer", { sdp: data.sdp });
+    socket.to(data.to).emit("answer", data.answer);
   });
 
-  socket.on("ice", (data) => {
-    io.to(data.to).emit("ice", { candidate: data.candidate });
+  socket.on("ice-candidate", (data) => {
+    socket.to(data.to).emit("ice-candidate", data.candidate);
   });
 
-  socket.on("chat", (data) => {
-    io.to(data.to).emit("receiveChat", { text: data.text });
-  });
-
-  socket.on("leave", () => {
-    waitingUsers = waitingUsers.filter(u => u !== socket.id);
-    io.emit("partner-left");
+  socket.on("message", (data) => {
+    socket.to(data.to).emit("message", data.message);
   });
 
   socket.on("disconnect", () => {
-    waitingUsers = waitingUsers.filter(id => id !== socket.id);
     console.log("User disconnected:", socket.id);
   });
 });
 
-// DEFAULT ROUTE -> serve frontend
 app.get("/", (req, res) => {
-  res.sendFile(path.join(__dirname, "public", "index.html"));
+  res.send("QuikChat Signaling Server Running OK 👍");
 });
 
 const PORT = process.env.PORT || 3000;
-http.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+server.listen(PORT, () => {
+  console.log("Server listening on port", PORT);
+});
