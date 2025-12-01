@@ -7,6 +7,7 @@ const io = require("socket.io")(http, {
   cors: { origin: "*" }
 });
 
+// Serve public folder
 app.use(express.static(path.join(__dirname, "public")));
 
 let waitingUser = null;
@@ -14,6 +15,7 @@ let waitingUser = null;
 io.on("connection", (socket) => {
   console.log("User connected:", socket.id);
 
+  // Find Matching Partner
   socket.on("findPartner", () => {
     if (!waitingUser) {
       waitingUser = socket.id;
@@ -24,10 +26,12 @@ io.on("connection", (socket) => {
     }
   });
 
+  // Send Message
   socket.on("sendMessage", (data) => {
     io.to(data.to).emit("receiveMessage", { msg: data.msg });
   });
 
+  // Disconnect
   socket.on("disconnect", () => {
     if (waitingUser === socket.id) waitingUser = null;
   });
