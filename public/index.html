@@ -3,40 +3,40 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>QuikChat - Random Chat</title>
+  <title>QuikChat Final</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
   <header class="topbar">
-    <h1>QuikChat</h1>
-    <button id="profileBtn">Profile</button>
+    <h1>QuikChat — Final</h1>
   </header>
 
   <main>
-    <div id="messages" class="messages"></div>
-
-    <div class="compose">
-      <input id="msgInput" placeholder="Type message..." autocomplete="off" />
-      <button id="sendBtn">Send</button>
-    </div>
-
-    <div class="controls">
-      <button id="findBtn" class="primary">Find Partner</button>
-      <button id="stopBtn" class="secondary" disabled>Stop</button>
-    </div>
-  </main>
-
-  <!-- profile modal (very simple) -->
-  <div id="profileModal" class="modal hidden">
-    <div class="modal-inner">
-      <h3>Profile</h3>
-      <input id="nameInput" placeholder="Your name" />
-      <div class="modal-actions">
-        <button id="saveProfile">Save</button>
-        <button id="closeProfile">Close</button>
+    <section class="video-row">
+      <div class="video-card">
+        <video id="localVideo" autoplay playsinline muted></video>
+        <div class="label">You</div>
       </div>
-    </div>
-  </div>
+      <div class="video-card">
+        <video id="remoteVideo" autoplay playsinline></video>
+        <div class="label">Partner</div>
+      </div>
+    </section>
+
+    <section class="controls">
+      <button id="findBtn" class="primary">Find Partner</button>
+      <button id="leaveBtn" class="secondary" disabled>Leave</button>
+      <div id="status" class="status">Ready</div>
+    </section>
+
+    <section class="chat-area">
+      <div id="chatBox" class="messages"></div>
+      <div class="compose">
+        <input id="msgInput" placeholder="Type message..." />
+        <button id="sendMsgBtn">Send</button>
+      </div>
+    </section>
+  </main>
 
   <script src="/socket.io/socket.io.js"></script>
   <script src="script.js"></script>
