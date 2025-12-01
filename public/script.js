@@ -1,4 +1,9 @@
-const socket = io();
+const disconnectBtn = document.getElementById("disconnectBtn");
+
+disconnectBtn.addEventListener("click", () => {
+  socket.disconnect();
+  location.reload();
+});const socket = io();
 
 const localVideo = document.getElementById("localVideo");
 const remoteVideo = document.getElementById("remoteVideo");
