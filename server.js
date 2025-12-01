@@ -30,3 +30,8 @@ app.post("/getToken", (req, res) => {
 });
 
 app.listen(4000, () => console.log("Token server started on port 4000"));
+app.use(express.static("public"));
+
+app.get("/", (req, res) => {
+  res.sendFile(__dirname + "/public/index.html");
+});
