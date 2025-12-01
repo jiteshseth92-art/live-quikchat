@@ -1,4 +1,4 @@
-// public/script.js (copy-paste ready)
+// public/script.js (copy-paste ready, improved candidate buffering + robustness)
 const socket = io(); // same-origin
 
 // UI
@@ -41,6 +41,9 @@ let room = null;
 let coins = 500;
 if (coinsVal) coinsVal.innerText = coins;
 
+// Buffer incoming ICE candidates if pc not ready
+let candidateBuffer = [];
+
 const ICE_CONFIG = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
 
 function setStatus(t){ if(statusTop) statusTop.innerText = t; }
@@ -51,7 +54,7 @@ async function startLocalStream(){
   if(localStream) return localStream;
   try {
     localStream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode: currentCam }, audio:true });
-    localVideo.srcObject = localStream;
+    if(localVideo) localVideo.srcObject = localStream;
     applyTrackStates();
     return localStream;
   } catch(e){
@@ -68,25 +71,40 @@ function applyTrackStates(){
   if(videoBtn) videoBtn.innerText = videoOff ? "Video On" : "Video Off";
 }
 
+function flushCandidateBuffer(){
+  if(!pc || !candidateBuffer.length) return;
+  candidateBuffer.forEach(async cand => {
+    try { await pc.addIceCandidate(new RTCIceCandidate(cand)); }
+    catch(e){ console.warn("buffered candidate add failed", e); }
+  });
+  candidateBuffer = [];
+}
+
 function createPeerIfNeeded(){
   if(pc) return pc;
   pc = new RTCPeerConnection(ICE_CONFIG);
 
   pc.onicecandidate = ev => {
     if(!ev.candidate) return;
+    // send candidate with partnerId if present
     socket.emit("candidate", { candidate: ev.candidate, to: partnerId });
   };
 
   pc.ontrack = ev => {
-    if(ev.streams && ev.streams[0]) {
-      remoteStream = ev.streams[0];
-      remoteVideo.srcObject = remoteStream;
-    } else {
-      const ms = new MediaStream();
-      if(ev.track) ms.addTrack(ev.track);
-      remoteVideo.srcObject = ms;
-    }
+    try {
+      if(ev.streams && ev.streams[0]) {
+        remoteStream = ev.streams[0];
+        if(remoteVideo) remoteVideo.srcObject = remoteStream;
+      } else {
+        const ms = new MediaStream();
+        if(ev.track) ms.addTrack(ev.track);
+        if(remoteVideo) remoteVideo.srcObject = ms;
+      }
+    } catch(e){ console.warn("ontrack error", e); }
   };
+
+  // fallback older API
+  pc.onaddstream = ev => { try { if(remoteVideo) remoteVideo.srcObject = ev.stream; } catch(e){} };
 
   pc.onconnectionstatechange = () => {
     if(!pc) return;
@@ -96,6 +114,7 @@ function createPeerIfNeeded(){
       showSearchAnim(false);
       if(nextBtn) nextBtn.disabled = false;
       if(disconnectBtn) disconnectBtn.disabled = false;
+      flushCandidateBuffer();
     } else if(["disconnected","failed","closed"].includes(pc.connectionState)) {
       stopTimer();
     }
@@ -105,6 +124,7 @@ function createPeerIfNeeded(){
     }
   };
 
+  // add local tracks (avoid duplicates)
   if(localStream) {
     try {
       const s = pc.getSenders().filter(s=>s.track);
@@ -145,7 +165,7 @@ privateBtn && (privateBtn.onclick = async () => {
   } catch(e){ console.warn(e); }
 });
 
-nextBtn && (nextBtn.onclick = () => { socket.emit("leave"); cleanupSession(); setTimeout(()=> findBtn.click(), 400); });
+nextBtn && (nextBtn.onclick = () => { socket.emit("leave"); cleanupSession(); setTimeout(()=> findBtn && findBtn.click(), 400); });
 disconnectBtn && (disconnectBtn.onclick = () => { socket.emit("leave"); cleanupSession(); });
 
 muteBtn && (muteBtn.onclick = () => { isMuted = !isMuted; applyTrackStates(); });
@@ -166,9 +186,11 @@ switchCamBtn && (switchCamBtn.onclick = async () => {
 
 sendChatBtn && (sendChatBtn.onclick = () => {
   const t = (chatInput.value||"").trim();
-  if(!t || !partnerId) return;
+  if(!t) return;
   addChat("You: " + t);
-  socket.emit("chat", { text: t, to: partnerId });
+  // prefer sending direct to partner if we have id
+  if(partnerId) socket.emit("chat", { text: t, to: partnerId });
+  else socket.emit("chat", { text: t });
   chatInput.value = "";
 });
 
@@ -185,12 +207,14 @@ stickerBtn && (stickerBtn.onclick = () => stickerInput && stickerInput.click());
 stickerInput && (stickerInput.onchange = e => {
   const f = e.target.files[0]; if(!f) return;
   const r = new FileReader();
-  r.onload = () => { localSticker.src = r.result; localSticker.hidden = false; socket.emit("sticker", { data: r.result, to: partnerId }); };
+  r.onload = () => { if(localSticker) { localSticker.src = r.result; localSticker.hidden = false; } socket.emit("sticker", { data: r.result, to: partnerId }); };
   r.readAsDataURL(f);
   stickerInput.value = "";
 });
 
+// Socket handlers
 socket.on("connect", () => { console.log("connected", socket.id); setStatus("Connected to signaling"); });
+
 socket.on("waiting", () => { setStatus("Waiting for partner..."); addChat("Waiting in queue..."); showSearchAnim(true); });
 
 socket.on("partnerFound", async (d) => {
@@ -224,6 +248,8 @@ socket.on("partnerFound", async (d) => {
 socket.on("offer", async (payload) => {
   try {
     console.log("offer received", payload);
+    // set partnerId from payload if not set
+    if(!partnerId && payload && payload.from) partnerId = payload.from;
     await startLocalStream();
     const localPc = createPeerIfNeeded();
 
@@ -240,7 +266,9 @@ socket.on("offer", async (payload) => {
 
     const answer = await localPc.createAnswer();
     await localPc.setLocalDescription(answer);
-    socket.emit("answer", { type: answer.type, sdp: answer.sdp, to: payload.from || partnerId, room });
+    // reply to the offer sender
+    const toId = payload.from || partnerId;
+    socket.emit("answer", { type: answer.type, sdp: answer.sdp, to: toId, room });
     setStatus("Answer sent — connecting...");
   } catch(e){ console.warn(e); }
 });
@@ -260,16 +288,22 @@ socket.on("candidate", async (payload) => {
   try {
     const cand = (payload && payload.candidate) ? payload.candidate : payload;
     if(!cand) return;
-    if(!pc) { console.warn("candidate but pc missing"); return; }
+    // if pc not yet created, buffer
+    if(!pc) {
+      candidateBuffer.push(cand);
+      console.log("buffering candidate, total:", candidateBuffer.length);
+      return;
+    }
     await pc.addIceCandidate(new RTCIceCandidate(cand));
     console.log("added candidate");
-  } catch(e){ console.warn(e); }
+  } catch(e){ console.warn("candidate handler", e); }
 });
 
+// chat / media handlers
 socket.on("chat", (d) => addChat("Partner: " + (d.text || "")));
 socket.on("receiveChat", (d) => addChat("Partner: " + (d.text || "")));
 socket.on("image", (d) => { addChat("Partner sent image"); const im=document.createElement('img'); im.src=d.data; im.style.maxWidth="220px"; chatBox.appendChild(im); chatBox.scrollTop=chatBox.scrollHeight; });
-socket.on("sticker", (d) => { remoteSticker.src = d.data; remoteSticker.hidden = false; });
+socket.on("sticker", (d) => { if(remoteSticker) { remoteSticker.src = d.data; remoteSticker.hidden = false; } });
 
 socket.on("partner-left", () => { addChat("Partner left"); cleanupSession(); });
 socket.on("disconnect", () => { setStatus("Signaling disconnected"); cleanupSession(); });
@@ -277,9 +311,10 @@ socket.on("disconnect", () => { setStatus("Signaling disconnected"); cleanupSess
 function cleanupSession(){
   try { if(pc) pc.close(); } catch(e){}
   pc = null;
+  candidateBuffer = [];
   partnerId = null;
   room = null;
-  remoteVideo.srcObject = null;
+  if(remoteVideo) remoteVideo.srcObject = null;
   stopTimer();
   if(findBtn) findBtn.disabled = false;
   if(nextBtn) nextBtn.disabled = true;
