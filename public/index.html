@@ -1,46 +1,61 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>QuikChat — FINAL</title>
-  <link rel="stylesheet" href="style.css" />
+  <meta charset="UTF-8" />
+  <title>QuikChat</title>
+  <style>
+    body { font-family: sans-serif; margin: 0; padding: 0; background:#f4f4f4; }
+    #chatBox {
+      padding: 10px;
+      height: 75vh;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .bubble {
+      max-width: 70%;
+      padding: 10px 14px;
+      border-radius: 18px;
+      font-size: 16px;
+      line-height: 20px;
+    }
+    .me {
+      align-self: flex-end;
+      background: #675cff;
+      color: white;
+      border-bottom-right-radius: 2px;
+    }
+    .them {
+      align-self: flex-start;
+      background: white;
+      color: #222;
+      border-bottom-left-radius: 2px;
+    }
+    #inputArea {
+      display: flex;
+      gap: 5px;
+      padding: 10px;
+      background: #fff;
+    }
+    #msgInput {
+      flex: 1;
+      padding: 10px;
+      border-radius: 10px;
+      border: 1px solid #ccc;
+    }
+    #sendBtn, #findBtn {
+      padding: 10px 15px;
+      border: none;
+      background: #675cff;
+      color: white;
+      border-radius: 10px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+  </style>
 </head>
+
 <body>
-  <header class="topbar">
-    <h1>QuikChat — Video Chat</h1>
-  </header>
-
-  <main>
-    <section class="video-row">
-      <div class="video-card">
-        <video id="localVideo" autoplay playsinline muted></video>
-        <div class="label">You</div>
-      </div>
-
-      <div class="video-card">
-        <video id="remoteVideo" autoplay playsinline></video>
-        <div class="label">Partner</div>
-      </div>
-    </section>
-
-    <section class="controls">
-      <button id="findBtn" class="primary">Find Partner</button>
-      <button id="leaveBtn" class="secondary" disabled>Leave</button>
-      <div id="status" class="status">Ready</div>
-    </section>
-
-    <section class="chat-area">
-      <div id="chatBox" class="messages"></div>
-      <div class="compose">
-        <input id="msgInput" placeholder="Type message..." />
-        <button id="sendMsgBtn">Send</button>
-      </div>
-    </section>
-  </main>
-
-  <!-- socket.io -->
-  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-  <script src="script.js"></script>
-</body>
-    </html>
+  <button id="findBtn" style="width:100%; margin:0;">Find Partner</button>
+  <div id="chatBox
