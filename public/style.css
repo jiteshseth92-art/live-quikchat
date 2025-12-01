@@ -1,23 +1,19 @@
 body {
-  margin: 0;
   font-family: Arial, sans-serif;
-  background: #f1f5ff;
+  background: #0d6efd;
+  margin: 0;
+  padding: 0;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
 }
 
 .topbar {
-  height: 55px;
-  background: #0078ff;
-  color: white;
+  background: #000;
+  color: #fff;
+  padding: 10px;
   display: flex;
   justify-content: space-between;
-  padding: 15px;
-  font-size: 20px;
-}
-
-.chat-container {
-  display: flex;
-  flex-direction: column;
-  height: calc(100vh - 60px);
 }
 
 .messages {
@@ -26,48 +22,39 @@ body {
   padding: 10px;
 }
 
-.message {
+.myMsg, .otherMsg {
   max-width: 70%;
-  padding: 10px 14px;
-  margin: 8px 0;
-  border-radius: 18px;
-  font-size: 16px;
-}
-
-.me {
-  background: #0078ff;
-  color: white;
-  margin-left: auto;
-  border-bottom-right-radius: 0;
-}
-
-.other {
-  background: #ffffff;
-  color: #000;
-  border-bottom-left-radius: 0;
-}
-
-.input-box {
-  display: flex;
   padding: 10px;
+  border-radius: 10px;
+  margin: 5px 0;
+}
+
+.myMsg {
   background: white;
+  margin-left: auto;
+}
+
+.otherMsg {
+  background: #e4e4e4;
+  margin-right: auto;
+}
+
+.input-area {
+  display: flex;
+  background: white;
+  padding: 10px;
 }
 
 input {
   flex: 1;
   padding: 10px;
-  border-radius: 18px;
-  border: 1px solid #ddd;
 }
 
 .find-btn {
-  margin-left: 10px;
-  padding: 10px;
-  background: #00c851;
+  background: black;
   color: white;
-  border-radius: 18px;
-}
-
-.file-input {
-  margin-left: 5px;
+  width: 100%;
+  padding: 15px;
+  border: none;
+  font-size: 18px;
 }
