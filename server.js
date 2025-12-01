@@ -7,99 +7,73 @@ const server = http.createServer(app);
 const { Server } = require("socket.io");
 
 const io = new Server(server, {
-  cors: { origin: "*" }
+  cors: { origin: "*" },
+  transports: ["websocket", "polling"]
 });
 
-// serve public folder
 app.use(express.static(path.join(__dirname, "public")));
 
-// matchmaking state
-let waiting = null;            // { id, name }
-const partners = {};          // partners[socketId] = partnerSocketId
+let waitingQueue = [];
+const pairs = new Map(); // socketId -> partnerId
 
 io.on("connection", (socket) => {
-  console.log("Connected:", socket.id);
+  console.log("CONNECT:", socket.id);
 
-  // store simple profile
-  socket.profile = { name: null };
-
-  socket.on("register", (profile) => {
-    try { socket.profile.name = profile?.name || socket.profile.name || "Anon"; }
-    catch(e){ socket.profile.name = socket.profile.name || "Anon"; }
-  });
-
-  // client requests to find partner
-  socket.on("findPartner", () => {
-    console.log("findPartner from", socket.id);
-    // if already paired, ignore
-    if(partners[socket.id]) {
-      socket.emit("info", "Already connected to partner");
+  socket.on("find", () => {
+    if (pairs.has(socket.id)) {
+      socket.emit("info", { text: "Already connected" });
       return;
     }
-
-    if(!waiting || waiting.id === socket.id){
-      waiting = { id: socket.id, name: socket.profile.name || "Anon" };
+    if (!waitingQueue.includes(socket.id)) waitingQueue.push(socket.id);
+    if (waitingQueue.length >= 2) {
+      const a = waitingQueue.shift();
+      const b = waitingQueue.shift();
+      pairs.set(a, b);
+      pairs.set(b, a);
+      io.to(a).emit("matched", { partner: b });
+      io.to(b).emit("matched", { partner: a });
+      console.log("MATCH:", a, "<->", b);
+    } else {
       socket.emit("waiting");
-      console.log("Waiting set:", waiting.id);
-      return;
-    }
-
-    // found waiting user -> match
-    const otherId = waiting.id;
-    // set partners both ways
-    partners[socket.id] = otherId;
-    partners[otherId] = socket.id;
-
-    // emit to both
-    io.to(otherId).emit("matched", { partnerId: socket.id, partnerName: socket.profile.name || "Anon" });
-    io.to(socket.id).emit("matched", { partnerId: otherId, partnerName: waiting.name || "Anon" });
-
-    // clear waiting
-    waiting = null;
-    console.log("Matched:", socket.id, "<->", otherId);
-  });
-
-  socket.on("stop-find", () => {
-    if(waiting && waiting.id === socket.id) {
-      waiting = null;
-      socket.emit("stopped");
     }
   });
 
-  // send message to partner (expects { to, text, fromName })
-  socket.on("sendMessage", (data) => {
-    const to = data?.to;
-    const txt = data?.text || "";
-    const fromName = data?.fromName || socket.profile.name || "Anon";
-    if(!to) return;
-    io.to(to).emit("receiveMessage", { text: txt, fromName, fromId: socket.id });
+  socket.on("offer", (data) => {
+    if (!data || !data.to) return;
+    io.to(data.to).emit("offer", { from: socket.id, sdp: data.sdp });
   });
 
-  // alternative small helper event used by simple clients
-  socket.on("message", (txt) => {
-    const partner = partners[socket.id];
-    if(partner) io.to(partner).emit("receiveMessage", { text: txt, fromName: socket.profile.name || "Anon", fromId: socket.id });
+  socket.on("answer", (data) => {
+    if (!data || !data.to) return;
+    io.to(data.to).emit("answer", { from: socket.id, sdp: data.sdp });
   });
 
-  // disconnect -> notify partner + cleanup
+  socket.on("ice", (data) => {
+    if (!data || !data.to) return;
+    io.to(data.to).emit("ice", { from: socket.id, candidate: data.candidate });
+  });
+
+  socket.on("leave", () => {
+    const p = pairs.get(socket.id);
+    if (p) {
+      io.to(p).emit("partner-left");
+      pairs.delete(p);
+      pairs.delete(socket.id);
+    }
+    waitingQueue = waitingQueue.filter(id => id !== socket.id);
+  });
+
   socket.on("disconnect", () => {
-    console.log("Disconnected:", socket.id);
-    // clear waiting if it was waiting
-    if(waiting && waiting.id === socket.id) waiting = null;
-
-    const partner = partners[socket.id];
-    if(partner){
-      // notify partner
-      io.to(partner).emit("partnerDisconnected");
-      // remove both sides
-      delete partners[partner];
-      delete partners[socket.id];
+    console.log("DISCONNECT:", socket.id);
+    waitingQueue = waitingQueue.filter(id => id !== socket.id);
+    const p = pairs.get(socket.id);
+    if (p) {
+      io.to(p).emit("partner-left");
+      pairs.delete(p);
     }
+    pairs.delete(socket.id);
   });
 });
 
-// port binding
-const PORT = process.env.PORT || 10000;
-server.listen(PORT, () => {
-  console.log("Server running on port", PORT);
-});
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => console.log("Signaling server running on port", PORT));
