@@ -13,12 +13,12 @@ app.use(express.urlencoded({ extended: false, limit: "10mb" }));
 // serve public folder
 app.use(express.static(path.join(__dirname, "..", "public")));
 
-// in-memory stores
+// in-memory store
 const users = new Map();
 let waitingQueues = { any: [], male: [], female: [] };
 let reports = [];
 
-// api to simulate earning coins
+// earn coins API
 app.post("/earn-coins", (req, res) => {
   const { socketId, amount } = req.body;
   if (!socketId || !users.has(socketId)) return res.status(400).json({ ok: false });
@@ -36,7 +36,7 @@ const io = new Server(server, {
   cors: { origin: "*", methods: ["GET", "POST"] }
 });
 
-// QUEUE HELPERS
+// queues helper
 function enqueueWaiting(user) {
   const key = (user.wantGender === "any") ? "any" : (user.wantGender === "male" ? "male" : "female");
   waitingQueues[key].push(user.id);
@@ -47,7 +47,7 @@ function removeFromWaiting(socketId) {
   });
 }
 
-// socket events
+// socket connection
 io.on("connection", (socket) => {
   console.log("connect", socket.id);
 
@@ -77,8 +77,7 @@ io.on("connection", (socket) => {
     function findFrom(queueKey) {
       for (let cid of waitingQueues[queueKey]) {
         if (cid === socket.id) continue;
-        const c = users.get(cid);
-        if (!c) continue;
+        if (!users.get(cid)) continue;
         return cid;
       }
       return null;
@@ -89,8 +88,8 @@ io.on("connection", (socket) => {
 
     if (candidate) {
       removeFromWaiting(candidate);
-      const room = socket.id + "#" + candidate;
 
+      const room = socket.id + "#" + candidate;
       socket.emit("matched", { partnerId: candidate, partnerProfile: sanitizeProfile(users.get(candidate)), room, lockedVideo: true });
       io.to(candidate).emit("matched", { partnerId: socket.id, partnerProfile: sanitizeProfile(me), room, lockedVideo: true });
 
@@ -136,11 +135,10 @@ io.on("connection", (socket) => {
 
 });
 
-// sanitize
 function sanitizeProfile(u) {
   return u ? { id: u.id, name: u.name, gender: u.gender, bio: u.bio, photo: u.photo, coins: u.coins, premium: u.premium } : null;
 }
 
-// START SERVER CORRECTLY
+// START SERVER
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, "0.0.0.0", () => console.log("Server running on port", PORT));
