@@ -1,25 +1,79 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>QuikChat Video</title>
-<style>
-  body { background:#111; margin:0; font-family:sans-serif; color:white; text-align:center; }
-  video { width:45%; background:black; margin:10px; border-radius:10px; }
-  #findBtn { padding:10px 20px; background:#00d1ff; color:#111; border:none; font-size:20px;
-             border-radius:10px; margin-top:20px; }
-</style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>QuikChat — Live</title>
+  <link rel="stylesheet" href="style.css" />
 </head>
-
 <body>
-  <h1>QuikChat Video</h1>
-  <video id="localVideo" autoplay muted playsinline></video>
-  <video id="remoteVideo" autoplay playsinline></video>
-  <br>
-  <button id="findBtn">Find Partner</button>
+  <div id="app">
+    <header>
+      <h1>QuikChat</h1>
+      <div id="statusTop">Ready</div>
+      <div class="tools">
+        <div><label>Gender</label><select id="genderSelect"><option value="any">Any</option><option value="male">Male</option><option value="female">Female</option></select></div>
+        <div><label>Country</label><select id="countrySelect"><option value="any">Any</option><option value="india">India</option><option value="pakistan">Pakistan</option><option value="bangladesh">Bangladesh</option><option value="nepal">Nepal</option><option value="usa">USA</option><option value="uk">UK</option></select></div>
+        <div><label>Name</label><input id="nameInput" type="text" placeholder="Your name (optional)" /></div>
+        <div><label>Coins</label><span id="coinsVal">0</span></div>
+      </div>
+    </header>
 
-  <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
+    <section class="video-wrap">
+      <div class="video-card">
+        <div class="label">Remote</div>
+        <div class="video-box">
+          <video id="remoteVideo" autoplay playsinline></video>
+          <img id="remoteSticker" class="sticker" hidden />
+        </div>
+      </div>
+
+      <div class="video-card">
+        <div class="label">You <span id="localName"></span></div>
+        <div class="video-box">
+          <video id="localVideo" autoplay muted playsinline></video>
+          <img id="localSticker" class="sticker" hidden />
+        </div>
+      </div>
+    </section>
+
+    <div class="controls">
+      <button id="findBtn" class="primary">Find</button>
+      <button id="nextBtn" disabled>Next</button>
+      <button id="disconnectBtn" disabled>End</button>
+
+      <div class="center-controls">
+        <button id="muteBtn">Mute</button>
+        <button id="videoBtn">Video Off</button>
+        <button id="switchCamBtn">Switch Cam</button>
+        <div id="timer">00:00</div>
+      </div>
+    </div>
+
+    <div class="extras">
+      <label class="file-label">
+        <input id="imageUpload" type="file" accept="image/*" hidden />
+        <button id="uploadBtn">Send Image</button>
+      </label>
+      <input id="stickerInput" type="file" accept="image/*" hidden />
+      <button id="stickerBtn">Send Sticker</button>
+      <button id="privateBtn">Private Call (100 coins)</button>
+    </div>
+
+    <div class="row" style="display:flex; gap:14px; justify-content:center; flex-wrap:wrap; margin-top:12px;">
+      <div class="chat">
+        <div id="chatBox"></div>
+        <div class="chat-controls">
+          <input id="chatInput" type="text" placeholder="Say hi..." />
+          <button id="sendChat">Send</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="searchAnim" style="display:none">Searching…</div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
   <script src="script.js"></script>
 </body>
-</html>
+                                               </html>
