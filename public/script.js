@@ -1,4 +1,4 @@
-// public/script.js (fixed — copy/paste ready)
+// public/script.js (paste entire file)
 (() => {
   const socket = io(); // same-origin recommended
 
@@ -50,7 +50,9 @@
   // ICE config (include TURN if you have credentials)
   const ICE_CONFIG = {
     iceServers: [
-      { urls: "stun:stun.l.google.com:19302" }
+      { urls: "stun:stun.l.google.com:19302" },
+      { urls: "stun:stun1.l.google.com:19302" },
+      { urls: "stun:stun2.l.google.com:19302" }
       // Add TURN if/when you have it
     ]
   };
