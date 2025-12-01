@@ -1,43 +1,56 @@
 const express = require("express");
-const http = require("http");
-const { Server } = require("socket.io");
-require("dotenv").config();
-
 const app = express();
-const server = http.createServer(app);
+const http = require("http").Server(app);
 
-const io = new Server(server, {
+app.use(express.static("public")); // ⭐ Serve front-end files
+
+const io = require("socket.io")(http, {
   cors: {
     origin: "*",
     methods: ["GET", "POST"]
   }
 });
 
+let waitingUsers = [];
+
 io.on("connection", (socket) => {
   console.log("User connected:", socket.id);
 
-  socket.on("find", () => {
-    socket.broadcast.emit("found", socket.id);
+  socket.on("findPartner", () => {
+    if (waitingUsers.length > 0) {
+      const partner = waitingUsers.pop();
+      io.to(socket.id).emit("partnerFound", partner);
+      io.to(partner).emit("partnerFound", socket.id);
+    } else {
+      waitingUsers.push(socket.id);
+    }
   });
 
   socket.on("offer", (data) => {
-    socket.to(data.to).emit("offer", data.offer);
+    io.to(data.partner).emit("offer", {
+      offer: data.offer,
+      from: socket.id
+    });
   });
 
   socket.on("answer", (data) => {
-    socket.to(data.to).emit("answer", data.answer);
+    io.to(data.partner).emit("answer", data.answer);
   });
 
   socket.on("ice-candidate", (data) => {
-    socket.to(data.to).emit("ice-candidate", data.candidate);
+    io.to(data.partner).emit("ice-candidate", data.candidate);
   });
 
   socket.on("message", (data) => {
-    socket.to(data.to).emit("message", data.message);
+    io.to(data.partner).emit("message", {
+      text: data.text,
+      from: socket.id
+    });
   });
 
   socket.on("disconnect", () => {
-    console.log("User disconnected:", socket.id);
+    waitingUsers = waitingUsers.filter((id) => id !== socket.id);
+    console.log("User disconnected", socket.id);
   });
 });
 
@@ -46,6 +59,4 @@ app.get("/", (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log("Server listening on port", PORT);
-});
+http.listen(PORT, () => console.log(`Server running on port ${PORT}`));
