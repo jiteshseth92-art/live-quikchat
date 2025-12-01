@@ -1,39 +1,30 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>QuikChat</title>
-    <link rel="stylesheet" href="style.css">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>QuikChat Live</title>
+  <link rel="stylesheet" href="style.css" />
 </head>
 <body>
 
-    <div class="app-container">
+<div class="container">
+  <h1>QuikChat Live</h1>
+  <p id="status">Press Find Partner to start</p>
 
-        <header>
-            <h2>QuikChat 💬</h2>
-            <button id="findBtn">Find Partner</button>
-        </header>
+  <div class="video-area">
+    <video id="localVideo" autoplay muted playsinline></video>
+    <video id="remoteVideo" autoplay playsinline></video>
+  </div>
 
-        <div id="chat-box" class="chat-box"></div>
+  <div class="controls">
+    <button id="findBtn">Find Partner</button>
+    <button id="disconnectBtn" class="red">Disconnect</button>
+  </div>
+</div>
 
-        <div class="input-area">
-            <input id="messageInput" type="text" placeholder="Type a message..." autocomplete="off"/>
-            <button id="sendBtn">Send</button>
-            <button id="stickerBtn">😊</button>
-        </div>
-
-        <!-- Sticker Panel -->
-        <div id="stickerPanel" class="sticker-panel hidden">
-            <img src="stickers/laugh.png" class="sticker" onclick="sendSticker('stickers/laugh.png')">
-            <img src="stickers/love.png" class="sticker" onclick="sendSticker('stickers/love.png')">
-            <img src="stickers/sad.png" class="sticker" onclick="sendSticker('stickers/sad.png')">
-            <img src="stickers/angry.png" class="sticker" onclick="sendSticker('stickers/angry.png')">
-        </div>
-
-    </div>
-
-    <script src="/socket.io/socket.io.js"></script>
-    <script src="Script.js"></script>
+<script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+<script src="script.js"></script>
 </body>
 </html>
