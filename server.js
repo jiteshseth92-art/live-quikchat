@@ -1,94 +1,61 @@
-// server.js
-require("dotenv").config();
 const express = require("express");
-const path = require("path");
-const http = require("http");
 const app = express();
-const server = http.createServer(app);
-const { Server } = require("socket.io");
-
-const io = new Server(server, {
-  cors: {
-    origin: "*",
-    methods: ["GET", "POST"]
-  },
-  transports: ["websocket", "polling"]
+const http = require("http").Server(app);
+const io = require("socket.io")(http, {
+  cors: { origin: "*", methods: ["GET", "POST"] }
 });
 
-// serve static files for frontend
+// serve public files
+const path = require("path");
 app.use(express.static(path.join(__dirname, "public")));
 
-let waitingQueue = [];
-const pairs = new Map();
+let waitingUsers = [];
 
-// socket connection
 io.on("connection", (socket) => {
-  console.log("CONNECT:", socket.id);
+  console.log("User connected:", socket.id);
 
   socket.on("find", () => {
-    if (pairs.has(socket.id)) {
-      socket.emit("info", { text: "Already connected" });
-      return;
-    }
-
-    if (!waitingQueue.includes(socket.id)) waitingQueue.push(socket.id);
-
-    if (waitingQueue.length >= 2) {
-      const a = waitingQueue.shift();
-      const b = waitingQueue.shift();
-
-      pairs.set(a, b);
-      pairs.set(b, a);
-
-      io.to(a).emit("matched", { partner: b });
-      io.to(b).emit("matched", { partner: a });
-
-      console.log("MATCH:", a, "<->", b);
+    if (waitingUsers.length > 0) {
+      const partner = waitingUsers.pop();
+      io.to(socket.id).emit("matched", { partner });
+      io.to(partner).emit("matched", { partner: socket.id });
     } else {
+      waitingUsers.push(socket.id);
       socket.emit("waiting");
     }
   });
 
   socket.on("offer", (data) => {
-    if (!data || !data.to) return;
     io.to(data.to).emit("offer", { from: socket.id, sdp: data.sdp });
   });
 
   socket.on("answer", (data) => {
-    if (!data || !data.to) return;
-    io.to(data.to).emit("answer", { from: socket.id, sdp: data.sdp });
+    io.to(data.to).emit("answer", { sdp: data.sdp });
   });
 
   socket.on("ice", (data) => {
-    if (!data || !data.to) return;
-    io.to(data.to).emit("ice", { from: socket.id, candidate: data.candidate });
+    io.to(data.to).emit("ice", { candidate: data.candidate });
+  });
+
+  socket.on("chat", (data) => {
+    io.to(data.to).emit("receiveChat", { text: data.text });
   });
 
   socket.on("leave", () => {
-    const p = pairs.get(socket.id);
-    if (p) {
-      io.to(p).emit("partner-left");
-      pairs.delete(p);
-      pairs.delete(socket.id);
-    }
-    waitingQueue = waitingQueue.filter(id => id !== socket.id);
+    waitingUsers = waitingUsers.filter(u => u !== socket.id);
+    io.emit("partner-left");
   });
 
   socket.on("disconnect", () => {
-    console.log("DISCONNECT:", socket.id);
-    waitingQueue = waitingQueue.filter(id => id !== socket.id);
-
-    const p = pairs.get(socket.id);
-    if (p) {
-      io.to(p).emit("partner-left");
-      pairs.delete(p);
-    }
-    pairs.delete(socket.id);
+    waitingUsers = waitingUsers.filter(id => id !== socket.id);
+    console.log("User disconnected:", socket.id);
   });
 });
 
-// start server
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log("Signaling server running on port", PORT);
+// DEFAULT ROUTE -> serve frontend
+app.get("/", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "index.html"));
 });
+
+const PORT = process.env.PORT || 3000;
+http.listen(PORT, () => console.log(`Server running on port ${PORT}`));
