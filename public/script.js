@@ -1,6 +1,7 @@
-
 // public/script.js
-const socket = io({ transports: ["websocket"] });
+const socket = io("https://live-quikchat-3-fczj.onrender.com", {
+  transports: ["websocket"]
+});
 
 const findBtn = document.getElementById("findBtn");
 const leaveBtn = document.getElementById("leaveBtn");
@@ -18,14 +19,13 @@ let pc = null;
 let partnerId = null;
 let dataChannel = null;
 
-// ICE config (add TURN here if needed)
+// ICE config
 const ICE_CONFIG = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
 
 function logStatus(t){ if(statusEl) statusEl.innerText = t; }
 function addSystemMsg(t){ const d=document.createElement("div"); d.className="msg system"; d.textContent = t; chatBox.appendChild(d); chatBox.scrollTop = chatBox.scrollHeight;}
 function addChatMsg(t, cls=""){ const d=document.createElement("div"); d.className = "msg " + (cls||""); d.textContent = t; chatBox.appendChild(d); chatBox.scrollTop = chatBox.scrollHeight; }
 
-// get media
 async function ensureLocalStream(){
   if(localStream) return localStream;
   try{
@@ -38,7 +38,6 @@ async function ensureLocalStream(){
   }
 }
 
-// create pc
 function createPC(){
   pc = new RTCPeerConnection(ICE_CONFIG);
 
@@ -52,7 +51,6 @@ function createPC(){
     remoteVideo.srcObject = ev.streams[0];
   };
 
-  // Data channel fallback for text chat if you want (we'll also use socket chat)
   pc.ondatachannel = (ev) => {
     dataChannel = ev.channel;
     dataChannel.onmessage = (e) => addChatMsg("Partner: " + e.data, "");
@@ -67,7 +65,6 @@ function createPC(){
     }
   };
 
-  // add local tracks if we already have stream
   if(localStream){
     localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
   }
@@ -78,14 +75,10 @@ function createPC(){
 async function startAsCaller(partner){
   partnerId = partner;
   createPC();
-  // create data channel too
   dataChannel = pc.createDataChannel("chat");
   dataChannel.onmessage = (e) => addChatMsg("Partner: " + e.data, "");
-
-  // ensure local stream present
   await ensureLocalStream();
   localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
-
   const offer = await pc.createOffer();
   await pc.setLocalDescription(offer);
   socket.emit("offer", { to: partnerId, sdp: offer.sdp });
@@ -112,9 +105,7 @@ async function handleAnswer(sdp){
 
 async function handleIce(candidate){
   if(!candidate) return;
-  try{
-    if(pc) await pc.addIceCandidate(candidate);
-  }catch(e){ console.warn("addIce err", e); }
+  try{ if(pc) await pc.addIceCandidate(candidate); }catch(e){}
 }
 
 function cleanup(){
@@ -133,7 +124,6 @@ function cleanup(){
   addSystemMsg("Session ended");
 }
 
-// socket events
 socket.on("connect", () => { console.log("sock id", socket.id); logStatus("Connected to signaling"); });
 socket.on("waiting", () => { logStatus("Waiting for partner..."); addSystemMsg("Waiting in queue"); findBtn.disabled = true; leaveBtn.disabled = false; });
 socket.on("matched", async (d) => {
@@ -141,7 +131,6 @@ socket.on("matched", async (d) => {
   addSystemMsg("Matched with " + partner);
   findBtn.disabled = true;
   leaveBtn.disabled = false;
-  // who will call? choose deterministic: smaller id calls
   const caller = socket.id < partner;
   await ensureLocalStream();
   if(caller) await startAsCaller(partner);
@@ -153,7 +142,6 @@ socket.on("ice", async (d) => { await handleIce(d.candidate); });
 socket.on("partner-left", () => { addSystemMsg("Partner left"); cleanup(); });
 socket.on("info", (d) => addSystemMsg(d.text));
 
-// UI bindings
 findBtn.onclick = async () => {
   socket.emit("find");
   findBtn.disabled = true;
@@ -171,23 +159,15 @@ sendMsgBtn.onclick = () => {
   const t = (msgInput.value||"").trim();
   if(!t) return;
   addChatMsg("You: " + t, "me");
-  // send via socket to partner (so chat works even if pc datachannel not ready)
   if(partnerId) socket.emit("chat", { to: partnerId, text: t });
-  // also try dataChannel
   try{ if(dataChannel && dataChannel.readyState === "open") dataChannel.send(t); }catch(e){}
   msgInput.value = "";
 };
 
-// minimal socket chat forwarding (server doesn't implement chat by default but we can still rely on datachannel + signaling)
-// For reliability, implement lightweight socket chat here:
-socket.on("connect", () => {
-  // handle incoming forwarded chat if server later supports it
-});
 socket.on("receiveChat", (d) => {
   addChatMsg("Partner: " + (d.text||""));
 });
 
-// initial UI state
 leaveBtn.disabled = true;
 logStatus("Ready");
 addSystemMsg("Ready. Click Find Partner to start.");
