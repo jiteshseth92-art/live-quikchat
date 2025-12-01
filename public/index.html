@@ -1,61 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>QuikChat — FINAL</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <h1>QuikChat — Video Chat</h1>
+  </header>
 
-const express = require("express");
-const app = express();
-const http = require("http").Server(app);
-const io = require("socket.io")(http, {
-  cors: {
-    origin: "*",
-    methods: ["GET", "POST"]
-  }
-});
+  <main>
+    <section class="video-row">
+      <div class="video-card">
+        <video id="localVideo" autoplay playsinline muted></video>
+        <div class="label">You</div>
+      </div>
 
-let waitingUsers = [];
+      <div class="video-card">
+        <video id="remoteVideo" autoplay playsinline></video>
+        <div class="label">Partner</div>
+      </div>
+    </section>
 
-io.on("connection", (socket) => {
-  console.log("User connected:", socket.id);
+    <section class="controls">
+      <button id="findBtn" class="primary">Find Partner</button>
+      <button id="leaveBtn" class="secondary" disabled>Leave</button>
+      <div id="status" class="status">Ready</div>
+    </section>
 
-  socket.on("findPartner", () => {
-    if (waitingUsers.length > 0) {
-      const partner = waitingUsers.pop();
-      io.to(socket.id).emit("partnerFound", partner);
-      io.to(partner).emit("partnerFound", socket.id);
-    } else {
-      waitingUsers.push(socket.id);
-    }
-  });
+    <section class="chat-area">
+      <div id="chatBox" class="messages"></div>
+      <div class="compose">
+        <input id="msgInput" placeholder="Type message..." />
+        <button id="sendMsgBtn">Send</button>
+      </div>
+    </section>
+  </main>
 
-  socket.on("offer", (data) => {
-    io.to(data.partner).emit("offer", {
-      offer: data.offer,
-      from: socket.id
-    });
-  });
-
-  socket.on("answer", (data) => {
-    io.to(data.partner).emit("answer", data.answer);
-  });
-
-  socket.on("ice-candidate", (data) => {
-    io.to(data.partner).emit("ice-candidate", data.candidate);
-  });
-
-  // ⭐ MESSAGE SEND / RECEIVE
-  socket.on("message", (data) => {
-    io.to(data.partner).emit("message", {
-      text: data.text,
-      from: socket.id
-    });
-  });
-
-  socket.on("disconnect", () => {
-    waitingUsers = waitingUsers.filter((id) => id !== socket.id);
-    console.log("User disconnected", socket.id);
-  });
-});
-
-app.get("/", (req, res) => {
-  res.send("Video Chat Server Running");
-});
-
-const PORT = process.env.PORT || 3000;
-http.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+  <!-- socket.io -->
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+  <script src="script.js"></script>
+</body>
+    </html>
