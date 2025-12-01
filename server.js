@@ -1,25 +1,22 @@
 const express = require("express");
+const path = require("path");
 const app = express();
 const http = require("http").createServer(app);
 const io = require("socket.io")(http, {
-  cors: {
-    origin: "*"
-  }
+  cors: { origin: "*" }
 });
 
-const path = require("path");
-
-// Static Files
-app.use(express.static(path.join(__dirname, "../public")));
+// Serve static files from public folder
+app.use(express.static(path.join(__dirname, "public")));
 
 // Default route
 app.get("/", (req, res) => {
-  res.sendFile(path.join(__dirname, "../public/index.html"));
+  res.sendFile(path.join(__dirname, "public", "index.html"));
 });
 
 // Socket IO
 io.on("connection", (socket) => {
-  console.log("New user connected");
+  console.log("User connected:", socket.id);
 
   socket.on("findPartner", () => {
     socket.broadcast.emit("partnerFound", socket.id);
@@ -30,9 +27,11 @@ io.on("connection", (socket) => {
   });
 
   socket.on("disconnect", () => {
-    console.log("User disconnected");
+    console.log("User disconnected:", socket.id);
   });
 });
 
-const PORT = process.env.PORT || 3000;
-http.listen(PORT, () => console.log("Server running on port " + PORT));
+const PORT = process.env.PORT || 10000;
+http.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
