@@ -1,31 +1,44 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>QuikChat - Random Chat</title>
-  <link rel="stylesheet" href="/style.css" />
+  <link rel="stylesheet" href="style.css" />
 </head>
-
 <body>
+  <header class="topbar">
+    <h1>QuikChat</h1>
+    <button id="profileBtn">Profile</button>
+  </header>
 
-<header class="topbar">
-  <h2>QuikChat</h2>
-  <button id="callBtn">📞 Call</button>
-</header>
+  <main>
+    <div id="messages" class="messages"></div>
 
-<div id="chatBox" class="messages"></div>
+    <div class="compose">
+      <input id="msgInput" placeholder="Type message..." autocomplete="off" />
+      <button id="sendBtn">Send</button>
+    </div>
 
-<div class="input-area">
-  <input id="msgInput" placeholder="Type message..." />
-  <button id="sendBtn">Send</button>
-</div>
+    <div class="controls">
+      <button id="findBtn" class="primary">Find Partner</button>
+      <button id="stopBtn" class="secondary" disabled>Stop</button>
+    </div>
+  </main>
 
-<button id="findBtn" class="find-btn">Find Partner</button>
+  <!-- profile modal (very simple) -->
+  <div id="profileModal" class="modal hidden">
+    <div class="modal-inner">
+      <h3>Profile</h3>
+      <input id="nameInput" placeholder="Your name" />
+      <div class="modal-actions">
+        <button id="saveProfile">Save</button>
+        <button id="closeProfile">Close</button>
+      </div>
+    </div>
+  </div>
 
-<!-- Socket + Script -->
-<script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-<script src="/script.js"></script>
-
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="script.js"></script>
 </body>
 </html>
