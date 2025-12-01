@@ -1,4 +1,5 @@
 // server.js
+require("dotenv").config();
 const express = require("express");
 const path = require("path");
 const http = require("http");
@@ -7,15 +8,20 @@ const server = http.createServer(app);
 const { Server } = require("socket.io");
 
 const io = new Server(server, {
-  cors: { origin: "*" },
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"]
+  },
   transports: ["websocket", "polling"]
 });
 
+// serve static files for frontend
 app.use(express.static(path.join(__dirname, "public")));
 
 let waitingQueue = [];
-const pairs = new Map(); // socketId -> partnerId
+const pairs = new Map();
 
+// socket connection
 io.on("connection", (socket) => {
   console.log("CONNECT:", socket.id);
 
@@ -24,14 +30,19 @@ io.on("connection", (socket) => {
       socket.emit("info", { text: "Already connected" });
       return;
     }
+
     if (!waitingQueue.includes(socket.id)) waitingQueue.push(socket.id);
+
     if (waitingQueue.length >= 2) {
       const a = waitingQueue.shift();
       const b = waitingQueue.shift();
+
       pairs.set(a, b);
       pairs.set(b, a);
+
       io.to(a).emit("matched", { partner: b });
       io.to(b).emit("matched", { partner: a });
+
       console.log("MATCH:", a, "<->", b);
     } else {
       socket.emit("waiting");
@@ -66,6 +77,7 @@ io.on("connection", (socket) => {
   socket.on("disconnect", () => {
     console.log("DISCONNECT:", socket.id);
     waitingQueue = waitingQueue.filter(id => id !== socket.id);
+
     const p = pairs.get(socket.id);
     if (p) {
       io.to(p).emit("partner-left");
@@ -75,5 +87,8 @@ io.on("connection", (socket) => {
   });
 });
 
+// start server
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log("Signaling server running on port", PORT));
+server.listen(PORT, () => {
+  console.log("Signaling server running on port", PORT);
+});
