@@ -1,85 +1,36 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>QuikChat - Full</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>QuikChat - Random Chat</title>
   <link rel="stylesheet" href="style.css" />
 </head>
+
 <body>
-  <div class="app">
-    <aside class="left">
-      <div class="profile">
-        <img id="profilePhoto" src="" alt="photo" />
-        <div>
-          <input id="name" placeholder="Name" />
-          <select id="gender">
-            <option value="any">Gender (any)</option>
-            <option value="male">Male</option>
-            <option value="female">Female</option>
-          </select>
-          <textarea id="bio" placeholder="Short bio"></textarea>
-          <input id="photoUrl" placeholder="Photo URL" />
-          <div class="small">
-            <label>Want match: </label>
-            <select id="wantGender">
-              <option value="any">Any</option>
-              <option value="male">Male</option>
-              <option value="female">Female</option>
-            </select>
-          </div>
-          <div class="small">
-            <label>Premium:</label>
-            <input id="premium" type="checkbox" />
-          </div>
-          <button id="saveProfile">Save Profile & Register</button>
-        </div>
-      </div>
 
-      <div class="coins-area">
-        <div>Coins: <span id="coins">0</span></div>
-        <button id="earnCoins">Watch ad (earn)</button>
-      </div>
+  <header class="topbar">
+    <h2>QuikChat</h2>
+    <button id="profileBtn" class="profile-btn">Profile</button>
+  </header>
 
-      <div class="controls">
-        <button id="findBtn">Find Partner</button>
-        <button id="stopFindBtn">Stop Finding</button>
-      </div>
+  <div id="profilePage" class="profile-page hidden">
+    <img id="profileImagePreview" class="profile-img" src="default-avatar.png" />
+    <input type="file" id="uploadProfilePic" accept="image/*" />
+    <input id="profileName" placeholder="Enter your name" />
+    <textarea id="profileBio" placeholder="Bio"></textarea>
+    <button id="saveProfile">Save</button>
+  </div>
 
-      <div class="status">
-        <p id="status">Status: Idle</p>
-      </div>
+  <div id="chatPage" class="chat-container">
+    <div id="messages" class="messages"></div>
 
-      <div class="settings">
-        <label><input id="blurToggle" type="checkbox" /> Blur my background (local)</label>
-        <label><input id="beautyToggle" type="checkbox" /> Beauty</label>
-      </div>
-    </aside>
-
-    <main class="main">
-      <section class="videos">
-        <video id="localVideo" autoplay muted playsinline></video>
-        <video id="remoteVideo" autoplay playsinline></video>
-      </section>
-
-      <section class="chat">
-        <div id="chatBox" class="chat-box"></div>
-        <div class="chat-controls">
-          <input id="messageInput" placeholder="Message..." />
-          <button id="sendBtn">Send</button>
-          <input id="fileInput" type="file" />
-          <button id="sendFileBtn">Send File</button>
-          <button id="unlockBtn">Unlock Video (20 coins)</button>
-        </div>
-      </section>
-
-      <section class="actions">
-        <button id="disconnectBtn" class="red">Disconnect</button>
-        <button id="friendReqBtn">Send Friend Request</button>
-        <button id="reportBtn">Report Partner</button>
-        <button id="blockBtn">Block Partner</button>
-      </section>
-    </main>
+    <div class="input-box">
+      <input id="messageInput" placeholder="Type a message..." />
+      <input type="file" id="sendFile" class="file-input" />
+      <button id="sendBtn">Send</button>
+      <button id="findBtn" class="find-btn">Find Partner</button>
+    </div>
   </div>
 
   <script src="/socket.io/socket.io.js"></script>
