@@ -1,61 +1,25 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>QuikChat</title>
-  <style>
-    body { font-family: sans-serif; margin: 0; padding: 0; background:#f4f4f4; }
-    #chatBox {
-      padding: 10px;
-      height: 75vh;
-      overflow-y: auto;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-    .bubble {
-      max-width: 70%;
-      padding: 10px 14px;
-      border-radius: 18px;
-      font-size: 16px;
-      line-height: 20px;
-    }
-    .me {
-      align-self: flex-end;
-      background: #675cff;
-      color: white;
-      border-bottom-right-radius: 2px;
-    }
-    .them {
-      align-self: flex-start;
-      background: white;
-      color: #222;
-      border-bottom-left-radius: 2px;
-    }
-    #inputArea {
-      display: flex;
-      gap: 5px;
-      padding: 10px;
-      background: #fff;
-    }
-    #msgInput {
-      flex: 1;
-      padding: 10px;
-      border-radius: 10px;
-      border: 1px solid #ccc;
-    }
-    #sendBtn, #findBtn {
-      padding: 10px 15px;
-      border: none;
-      background: #675cff;
-      color: white;
-      border-radius: 10px;
-      cursor: pointer;
-      font-weight: bold;
-    }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>QuikChat Video</title>
+<style>
+  body { background:#111; margin:0; font-family:sans-serif; color:white; text-align:center; }
+  video { width:45%; background:black; margin:10px; border-radius:10px; }
+  #findBtn { padding:10px 20px; background:#00d1ff; color:#111; border:none; font-size:20px;
+             border-radius:10px; margin-top:20px; }
+</style>
 </head>
 
 <body>
-  <button id="findBtn" style="width:100%; margin:0;">Find Partner</button>
-  <div id="chatBox
+  <h1>QuikChat Video</h1>
+  <video id="localVideo" autoplay muted playsinline></video>
+  <video id="remoteVideo" autoplay playsinline></video>
+  <br>
+  <button id="findBtn">Find Partner</button>
+
+  <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
+  <script src="script.js"></script>
+</body>
+</html>
