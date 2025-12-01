@@ -1,59 +1,73 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>QuikChat</title>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>QuikChat - Random Video</title>
   <style>
-    body { font-family: Arial; background: #eef3ff; margin: 0; padding: 0; }
-    header { background: #007bff; color: #fff; padding: 20px; font-size: 28px; font-weight: bold; }
-    input, select { padding: 10px; margin: 5px; border-radius: 8px; width: 90%; }
-    button { padding: 10px; margin: 5px; border-radius: 8px; font-size: 16px; }
-    video { width: 45%; background: #000; border-radius: 10px; }
+    body{font-family:Arial,Helvetica,sans-serif;background:#f0f4f9;margin:0;padding:0}
+    .topbar{background:#0b74ff;color:#fff;padding:14px 16px;display:flex;align-items:center;justify-content:space-between}
+    .container{padding:12px}
+    .profile{background:#fff;padding:12px;border-radius:8px;margin-bottom:12px}
+    input,select,textarea,button{padding:8px;margin:6px 4px;border-radius:6px;border:1px solid #ccc}
+    #videos{display:flex;gap:8px;margin:12px 0}
+    video{width:48%;height:240px;background:#000;border-radius:8px;object-fit:cover}
+    .messages{background:#fff;padding:8px;border-radius:8px;height:150px;overflow:auto;margin-bottom:8px}
+    .chat-inputs{display:flex;gap:8px;align-items:center}
+    .chat-inputs input{flex:1}
+    .system{color:#555;font-style:italic;margin:6px 0}
+    .chat-msg{margin:6px 0}
   </style>
 </head>
-
 <body>
-<header>QuikChat</header>
+  <div class="topbar">
+    <div style="font-size:20px;font-weight:700">QuikChat</div>
+    <div><button id="openProfile">Profile</button></div>
+  </div>
 
-<h2>Profile</h2>
-<input id="name" placeholder="Enter name">
-<select id="gender">
-  <option value="Male">Male</option>
-  <option value="Female">Female</option>
-</select>
-<select id="wantGender">
-  <option value="Any">Match: Any</option>
-  <option value="Male">Male</option>
-  <option value="Female">Female</option>
-</select>
+  <div class="container">
+    <div class="profile" id="profilePanel">
+      <h3>Profile</h3>
+      <input id="name" placeholder="Enter name"/><br/>
+      <select id="gender">
+        <option value="male">Male</option>
+        <option value="female">Female</option>
+        <option value="any">Any</option>
+      </select>
+      <select id="wantGender">
+        <option value="any">Match: Any</option>
+        <option value="male">Male</option>
+        <option value="female">Female</option>
+      </select><br/>
+      <input id="photoUrl" placeholder="Photo URL (optional)"/><br/>
+      <textarea id="bio" placeholder="Bio" rows="2" style="width:100%"></textarea><br/>
+      <button id="saveProfile">Save</button>
+      <button id="closeProfile">Close</button>
+    </div>
 
-<input id="photoUrl" placeholder="Photo URL (optional)">
-<label><input type="checkbox" id="premium"> Premium</label>
-<br>
+    <div class="profile">
+      <div id="status">Status: Ready</div>
+      <div style="margin:8px 0">
+        <button id="findBtn">Find Partner</button>
+        <button id="stopFindBtn" disabled>Stop</button>
+        <button id="leaveBtn">Leave</button>
+      </div>
 
-Coins: <span id="coins">0</span><br>
-<button id="earnCoins">Earn Coins</button>
-<button id="saveProfile">Save</button>
+      <div id="videos">
+        <video id="localVideo" autoplay muted playsinline></video>
+        <video id="remoteVideo" autoplay playsinline></video>
+      </div>
 
-<h3>Status: <span id="status">Ready</span></h3>
+      <div class="messages" id="chatBox"></div>
 
-<input id="messageInput" placeholder="Type message...">
-<button id="sendBtn">Send</button>
-<button id="findBtn">Find Partner</button>
-<button id="stopFindBtn">Stop</button>
+      <div class="chat-inputs">
+        <input id="messageInput" placeholder="Type message..."/>
+        <button id="sendBtn">Send</button>
+      </div>
+    </div>
+  </div>
 
-<h3>Messages</h3>
-<div id="chatBox" style="background:#fff;padding:10px;height:120px;overflow-y:auto;border-radius:10px;"></div>
-
-<h3>Video Chat</h3>
-<video id="localVideo" autoplay playsinline></video>
-<video id="remoteVideo" autoplay playsinline></video><br>
-<button id="startVideo">Start Video</button>
-<button id="stopVideo">Stop Video</button>
-
-<script src="/socket.io/socket.io.js"></script>
-<script src="script.js"></script>
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="script.js"></script>
 </body>
 </html>
