@@ -1,53 +1,57 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>QuikChat - Random Chat</title>
-  <link rel="stylesheet" href="style.css" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QuikChat</title>
+  <style>
+    body { font-family: Arial; background: #eef3ff; margin: 0; padding: 0; }
+    header { background: #007bff; color: #fff; padding: 20px; font-size: 28px; font-weight: bold; }
+    input, select { padding: 10px; margin: 5px; border-radius: 8px; width: 90%; }
+    button { padding: 10px; margin: 5px; border-radius: 8px; font-size: 16px; }
+    video { width: 45%; background: #000; border-radius: 10px; }
+  </style>
 </head>
 
 <body>
+<header>QuikChat</header>
 
-<header class="topbar">
-  <h2>QuikChat</h2>
-  <button id="openProfile">Profile</button>
-</header>
+<h2>Profile</h2>
+<input id="name" placeholder="Enter name">
+<select id="gender">
+  <option value="Male">Male</option>
+  <option value="Female">Female</option>
+</select>
+<select id="wantGender">
+  <option value="Any">Match: Any</option>
+  <option value="Male">Male</option>
+  <option value="Female">Female</option>
+</select>
 
-<!-- Profile PAGE -->
-<div id="profilePage" class="page hidden">
-  <h3>Profile</h3>
-  <input id="name" placeholder="Enter name" />
-  <select id="gender">
-    <option value="male">Male</option>
-    <option value="female">Female</option>
-    <option value="any">Any</option>
-  </select>
-  <textarea id="bio" placeholder="Bio"></textarea>
-  <input id="photoUrl" placeholder="Photo URL (optional)" />
-  <select id="wantGender">
-    <option value="any">Match: Any</option>
-    <option value="male">Male</option>
-    <option value="female">Female</option>
-  </select>
-  <label><input type="checkbox" id="premium" /> Premium</label>
-  <h4>Coins: <span id="coins">0</span></h4>
-  <button id="earnCoins">Earn Coins</button>
-  <button id="saveProfile">Save</button>
-  <button id="closeProfile">Close</button>
-</div>
+<input id="photoUrl" placeholder="Photo URL (optional)">
+<label><input type="checkbox" id="premium"> Premium</label>
+<br>
 
-<!-- Chat Page -->
-<div id="chatPage" class="page">
-  <div id="status">Ready</div>
-  <div id="chatBox" class="messages"></div>
+Coins: <span id="coins">0</span><br>
+<button id="earnCoins">Earn Coins</button>
+<button id="saveProfile">Save</button>
 
-  <input id="messageInput" placeholder="Type message..." />
-  <button id="sendBtn">Send</button>
+<h3>Status: <span id="status">Ready</span></h3>
 
-  <button id="findBtn">Find Partner</button>
-  <button id="stopFindBtn" disabled>Stop</button>
-</div>
+<input id="messageInput" placeholder="Type message...">
+<button id="sendBtn">Send</button>
+<button id="findBtn">Find Partner</button>
+<button id="stopFindBtn">Stop</button>
+
+<h3>Messages</h3>
+<div id="chatBox" style="background:#fff;padding:10px;height:120px;overflow-y:auto;border-radius:10px;"></div>
+
+<h3>Video Chat</h3>
+<video id="localVideo" autoplay playsinline></video>
+<video id="remoteVideo" autoplay playsinline></video><br>
+<button id="startVideo">Start Video</button>
+<button id="stopVideo">Stop Video</button>
 
 <script src="/socket.io/socket.io.js"></script>
 <script src="script.js"></script>
