@@ -1,6 +1,4 @@
-// public/script.js (patched)
-// Uses your original structure, minimal changes — focused fixes for remote video + sticker click
-
+// public/script.js
 const socket = io(); // same-origin recommended
 
 // UI elements
@@ -34,7 +32,7 @@ const localNameEl = document.getElementById("localName");
 // state
 let pc = null;
 let localStream = null;
-let remoteStream = null; // the MediaStream we will append tracks to (if tracks arrive individually)
+let remoteStream = null; // MediaStream we will add remote tracks into
 let timerInterval = null;
 let seconds = 0;
 let currentCam = "user";
@@ -42,8 +40,8 @@ let isMuted = false;
 let videoOff = false;
 let room = null;
 let coins = 500; // demo starting coins
-if (coinsVal) coinsVal.innerText = coins;
-if (localNameEl) localNameEl.innerText = `(You)`;
+coinsVal && (coinsVal.innerText = coins);
+localNameEl && (localNameEl.innerText = `(You)`);
 
 // ICE config (include TURN if you have credentials)
 const ICE_CONFIG = {
@@ -77,13 +75,15 @@ function addChat(txt){
   chatBox.scrollTop = chatBox.scrollHeight;
 }
 
+/* -------------------- media helpers -------------------- */
 async function startLocalStream(){
   if (localStream) return localStream;
   try {
-    localStream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode: currentCam }, audio:true });
+    const constraints = { video:{ facingMode: currentCam }, audio:true };
+    localStream = await navigator.mediaDevices.getUserMedia(constraints);
     if (localVideo) {
       localVideo.srcObject = localStream;
-      // try to play (some browsers require user gesture but attempt anyway)
+      // attempt play safely
       localVideo.play().catch(()=>{});
     }
     applyTrackStates();
@@ -102,59 +102,47 @@ function applyTrackStates(){
   if (videoBtn) videoBtn.innerText = videoOff ? "Video On" : "Video Off";
 }
 
-// Create or return existing RTCPeerConnection
+/* -------------------- peer connection -------------------- */
 function createPeerIfNeeded(){
   if (pc) return pc;
   pc = new RTCPeerConnection(ICE_CONFIG);
 
-  // send candidates to signalling server
+  // send local ICE candidates to server
   pc.onicecandidate = (ev) => {
     if (ev.candidate) {
       socket.emit("candidate", ev.candidate);
     }
   };
 
-  /*
-    FIX: handle ontrack robustly:
-    - If ev.streams[0] exists, use it.
-    - If not (some browsers deliver track events without streams), create/append to a MediaStream
-    - Ensure remoteVideo.srcObject is a MediaStream and call play()
-  */
+  // Robust ontrack: handle both full streams and individual tracks
   pc.ontrack = (ev) => {
     try {
-      console.log("pc.ontrack event:", ev);
-      // if remote stream array provided — use it (common case)
+      // If the browser supplies streams array (common), attach first one
       if (ev.streams && ev.streams[0]) {
+        // Use provided stream directly
         remoteStream = ev.streams[0];
-        if (remoteVideo) {
-          remoteVideo.srcObject = remoteStream;
-          remoteVideo.onloadedmetadata = () => remoteVideo.play().catch(()=>{});
-          // also attempt immediate play
-          remoteVideo.play().catch(()=>{});
-        }
-        return;
-      }
-
-      // else, track delivered individually — ensure we have a MediaStream to add into
-      if (!remoteStream) {
-        remoteStream = new MediaStream();
-        if (remoteVideo) {
-          remoteVideo.srcObject = remoteStream;
-        }
-      }
-
-      // avoid adding duplicate tracks
-      const already = remoteStream.getTracks().some(t => t.id === ev.track.id);
-      if (!already) {
+        remoteVideo.srcObject = remoteStream;
+      } else {
+        // Some setups deliver individual tracks - create / reuse a MediaStream and add track
+        if (!remoteStream) remoteStream = new MediaStream();
         remoteStream.addTrack(ev.track);
+        remoteVideo.srcObject = remoteStream;
       }
 
-      if (remoteVideo) {
-        remoteVideo.onloadedmetadata = () => remoteVideo.play().catch(()=>{});
-        remoteVideo.play().catch(()=>{ setTimeout(()=>remoteVideo.play().catch(()=>{}), 300); });
-      }
+      // Attempt to play the remote video; some mobile browsers need a user gesture
+      remoteVideo.play().catch((err) => {
+        // try again shortly if autoplay blocked
+        console.warn("remoteVideo.play() failed:", err);
+        setTimeout(()=>remoteVideo.play().catch(()=>{}), 500);
+      });
+
+      // ensure we log metadata
+      remoteVideo.onloadedmetadata = () => {
+        try { remoteVideo.play().catch(()=>{}); } catch(e){}
+        console.log("remote video metadata loaded");
+      };
     } catch (e) {
-      console.warn("ontrack handler error:", e);
+      console.warn("ontrack error", e);
     }
   };
 
@@ -177,16 +165,17 @@ function createPeerIfNeeded(){
     }
   };
 
-  // attach local tracks if present (avoid duplicates)
+  // Add local tracks if present (avoid duplicates)
   if (localStream) {
     const existing = pc.getSenders().filter(s=>s.track);
     if (!existing.length) localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
   }
+
   return pc;
 }
 
-// UI handlers
-if (findBtn) findBtn.onclick = async () => {
+/* -------------------- UI handlers -------------------- */
+findBtn.onclick = async () => {
   try {
     setStatus("Searching partner...");
     showSearchAnim(true);
@@ -197,11 +186,11 @@ if (findBtn) findBtn.onclick = async () => {
     await startLocalStream();
 
     const opts = {
-      gender: genderSelect ? genderSelect.value : "any",
-      country: countrySelect ? countrySelect.value : "any",
+      gender: genderSelect.value,
+      country: countrySelect.value,
       wantPrivate: false,
       coins,
-      name: nameInput ? nameInput.value || null : null
+      name: nameInput.value || null
     };
 
     socket.emit("findPartner", opts);
@@ -211,33 +200,33 @@ if (findBtn) findBtn.onclick = async () => {
   }
 };
 
-if (privateBtn) privateBtn.onclick = async () => {
+privateBtn.onclick = async () => {
   if (coins < 100) { alert("Not enough coins for private call (100)."); return; }
   const ok = confirm("Spend 100 coins to enter private match? (Both users must choose private)");
   if (!ok) return;
   try {
     setStatus("Searching private partner...");
     showSearchAnim(true);
-    if (findBtn) findBtn.disabled = true;
+    findBtn.disabled = true;
 
     await startLocalStream();
     const opts = {
-      gender: genderSelect ? genderSelect.value : "any",
-      country: countrySelect ? countrySelect.value : "any",
+      gender: genderSelect.value,
+      country: countrySelect.value,
       wantPrivate: true,
       coins,
-      name: nameInput ? nameInput.value || null : null
+      name: nameInput.value || null
     };
     socket.emit("findPartner", opts);
   } catch (e) { console.warn(e); resetControls(); }
 };
 
-if (nextBtn) nextBtn.onclick = () => { leaveAndFind(true); };
-if (disconnectBtn) disconnectBtn.onclick = () => { leaveAndFind(false); };
-if (muteBtn) muteBtn.onclick = () => { isMuted = !isMuted; applyTrackStates(); };
-if (videoBtn) videoBtn.onclick = () => { videoOff = !videoOff; applyTrackStates(); };
+nextBtn.onclick = () => { leaveAndFind(true); };
+disconnectBtn.onclick = () => { leaveAndFind(false); };
+muteBtn.onclick = () => { isMuted = !isMuted; applyTrackStates(); };
+videoBtn.onclick = () => { videoOff = !videoOff; applyTrackStates(); };
 
-if (switchCamBtn) switchCamBtn.onclick = async () => {
+switchCamBtn.onclick = async () => {
   currentCam = currentCam === "user" ? "environment" : "user";
   if (localStream) { localStream.getTracks().forEach(t => t.stop()); localStream = null; }
   await startLocalStream();
@@ -249,7 +238,7 @@ if (switchCamBtn) switchCamBtn.onclick = async () => {
   }
 };
 
-if (sendChatBtn) sendChatBtn.onclick = () => {
+sendChatBtn.onclick = () => {
   const txt = (chatInput.value || "").trim();
   if (!txt) return;
   addChat("You: " + txt);
@@ -258,60 +247,90 @@ if (sendChatBtn) sendChatBtn.onclick = () => {
 };
 
 // image send
-if (uploadBtn && imageUpload) {
-  uploadBtn.onclick = () => imageUpload.click();
-  imageUpload.onchange = async (e) => {
-    const f = e.target.files[0];
-    if (!f) return;
-    const r = new FileReader();
-    r.onload = () => {
-      socket.emit("image", { data: r.result, name: f.name, ts: Date.now() });
-      addChat("You sent an image");
-    };
-    r.readAsDataURL(f);
-    imageUpload.value = "";
+uploadBtn.onclick = () => imageUpload.click();
+imageUpload.onchange = async (e) => {
+  const f = e.target.files[0];
+  if (!f) return;
+  const r = new FileReader();
+  r.onload = () => {
+    socket.emit("image", { data: r.result, name: f.name, ts: Date.now() });
+    addChat("You sent an image");
   };
-}
+  r.readAsDataURL(f);
+  imageUpload.value = "";
+};
 
 // sticker send
-if (stickerBtn && stickerInput) {
-  stickerBtn.onclick = () => stickerInput.click();
-  stickerInput.onchange = (e) => {
-    const f = e.target.files[0];
-    if (!f) return;
-    const r = new FileReader();
-    r.onload = () => {
-      if (localSticker) { localSticker.src = r.result; localSticker.hidden = false; localSticker.style.pointerEvents = "auto"; }
-      socket.emit("sticker", { data: r.result, ts: Date.now() });
-    };
-    r.readAsDataURL(f);
-    stickerInput.value = "";
+stickerBtn.onclick = () => stickerInput.click();
+stickerInput.onchange = (e) => {
+  const f = e.target.files[0];
+  if (!f) return;
+  const r = new FileReader();
+  r.onload = () => {
+    if (localSticker) { localSticker.src = r.result; localSticker.hidden=false; localSticker.style.pointerEvents = "auto"; }
+    socket.emit("sticker", { data: r.result, ts: Date.now() });
+  };
+  r.readAsDataURL(f);
+  stickerInput.value = "";
+};
+
+// allow clicking the overlay stickers to zoom/download (if CSS allows click)
+function enableStickerClicks(){
+  if (localSticker) localSticker.onclick = () => {
+    if (!localSticker.hidden && localSticker.src) showImageZoom(localSticker.src, "sticker.png");
+  };
+  if (remoteSticker) remoteSticker.onclick = () => {
+    if (!remoteSticker.hidden && remoteSticker.src) showImageZoom(remoteSticker.src, "sticker_from_partner.png");
   };
 }
 
-// Protect sticker clicks—do NOT trigger file input; show image in new tab for quick zoom/download
-function guardStickerClicks() {
-  if (localSticker) {
-    // enable click and prevent propagation that could open file pickers
-    localSticker.style.pointerEvents = "auto";
-    localSticker.addEventListener('click', (e) => {
-      e.stopPropagation(); e.preventDefault();
-      if (!localSticker.src) return;
-      // open in new tab (user can save)
-      window.open(localSticker.src, "_blank");
+/* -------------------- helpers for zoom & download -------------------- */
+function showImageZoom(src, filename = "image.png"){
+  // create modal if not exists
+  let modal = document.getElementById('qc-zoom-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'qc-zoom-modal';
+    Object.assign(modal.style, {
+      position:'fixed', left:0, top:0, right:0, bottom:0, display:'flex',
+      justifyContent:'center', alignItems:'center', background:'rgba(0,0,0,0.9)', zIndex:99999
     });
+    const img = document.createElement('img');
+    img.id = 'qc-zoom-img';
+    img.style.maxWidth='95%';
+    img.style.maxHeight='85%';
+    img.style.borderRadius='8px';
+    modal.appendChild(img);
+    const controls = document.createElement('div');
+    controls.style.marginTop='12px';
+    const dl = document.createElement('button');
+    dl.innerText='Download';
+    dl.style.margin='8px';
+    dl.onclick = () => {
+      const link = document.createElement('a');
+      link.href = document.getElementById('qc-zoom-img').src;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    };
+    const close = document.createElement('button');
+    close.innerText='Close';
+    close.style.margin='8px';
+    close.onclick = () => { modal.style.display='none'; };
+    controls.appendChild(dl);
+    controls.appendChild(close);
+    const wrapper = document.createElement('div');
+    wrapper.style.textAlign='center';
+    wrapper.appendChild(controls);
+    modal.appendChild(wrapper);
+    document.body.appendChild(modal);
   }
-  if (remoteSticker) {
-    remoteSticker.style.pointerEvents = "auto";
-    remoteSticker.addEventListener('click', (e) => {
-      e.stopPropagation(); e.preventDefault();
-      if (!remoteSticker.src) return;
-      window.open(remoteSticker.src, "_blank");
-    });
-  }
+  document.getElementById('qc-zoom-img').src = src;
+  modal.style.display = 'flex';
 }
-guardStickerClicks();
 
+/* -------------------- leave / rematch / reset -------------------- */
 async function leaveAndFind(rematch=false){
   try {
     if (room) {
@@ -319,9 +338,9 @@ async function leaveAndFind(rematch=false){
       room = null;
       if (pc) try { pc.close(); } catch(e) {}
       pc = null;
-      if (remoteVideo) remoteVideo.srcObject = null;
+      remoteVideo.srcObject = null;
       if (remoteStream) {
-        try { remoteStream.getTracks().forEach(t=>t.stop()); } catch(e){}
+        try { remoteStream.getTracks().forEach(t => t.stop()); } catch(e){}
         remoteStream = null;
       }
       stopTimer();
@@ -329,7 +348,7 @@ async function leaveAndFind(rematch=false){
     }
   } catch(e){ console.warn(e); }
   resetControls();
-  if (rematch) setTimeout(()=> { if (findBtn) findBtn.click(); }, 350);
+  if (rematch) setTimeout(()=> findBtn.click(), 350);
 }
 
 function resetControls(){
@@ -340,9 +359,10 @@ function resetControls(){
   setStatus("Ready — click Find");
   stopTimer();
   addChat("Ready");
+  enableStickerClicks();
 }
 
-// socket handlers
+/* -------------------- socket handlers -------------------- */
 socket.on("connect", () => {
   console.log("socket connected", socket.id);
   resetControls();
@@ -363,7 +383,7 @@ socket.on("partnerFound", async (data) => {
     if (data.partnerMeta && data.partnerMeta.wantPrivate) {
       if (coins >= 100) {
         coins -= 100;
-        if (coinsVal) coinsVal.innerText = coins;
+        coinsVal.innerText = coins;
         addChat("Private call started (100 coins spent).");
       }
     }
@@ -435,10 +455,7 @@ socket.on("candidate", async (payload) => {
     // server may forward {candidate: <obj>} or raw candidate object
     const cand = (payload && payload.candidate) ? payload.candidate : payload;
     if (!cand) return;
-    // guard: only add if pc exists and not closed
-    if (pc.signalingState && pc.signalingState !== "closed") {
-      await pc.addIceCandidate(new RTCIceCandidate(cand)).catch(e => console.warn("addIceCandidate err", e));
-    }
+    await pc.addIceCandidate(new RTCIceCandidate(cand));
   } catch(e){ console.warn("candidate error", e); }
 });
 
@@ -451,8 +468,18 @@ socket.on("image", (img) => {
   im.style.display = "block";
   im.style.margin = "8px 0";
   im.style.cursor = "pointer";
-  im.onclick = () => window.open(im.src, "_blank");
-  chatBox.appendChild(im);
+  im.onclick = (e) => { e.stopPropagation(); showImageZoom(img.data, img.name || "image.png"); };
+
+  // download button
+  const dl = document.createElement('button');
+  dl.innerText = "⬇ Download";
+  dl.style.margin = "6px";
+  dl.onclick = (e) => { e.stopPropagation(); const a=document.createElement('a'); a.href = img.data; a.download = img.name || 'image.png'; a.click(); };
+
+  const container = document.createElement('div');
+  container.appendChild(im);
+  container.appendChild(dl);
+  chatBox.appendChild(container);
   chatBox.scrollTop = chatBox.scrollHeight;
 });
 socket.on("sticker", (st) => {
@@ -460,7 +487,9 @@ socket.on("sticker", (st) => {
     remoteSticker.src = st.data;
     remoteSticker.hidden = false;
     remoteSticker.style.pointerEvents = "auto";
+    enableStickerClicks();
   }
+  addChat("Partner sent a sticker");
 });
 
 socket.on("peer-left", () => {
@@ -468,9 +497,7 @@ socket.on("peer-left", () => {
   // close pc to cleanup and allow quick rematch
   if (pc) try { pc.close(); } catch(e){}
   pc = null;
-  if (remoteVideo) remoteVideo.srcObject = null;
-  if (remoteStream) try { remoteStream.getTracks().forEach(t=>t.stop()); } catch(e){}
-  remoteStream = null;
+  remoteVideo.srcObject = null;
   leaveAndFind(false);
 });
 
@@ -482,7 +509,6 @@ socket.on("disconnect", () => {
 window.addEventListener("beforeunload", () => {
   try { socket.emit("leave"); } catch(e){}
   if (localStream) localStream.getTracks().forEach(t=>t.stop());
-  if (remoteStream) remoteStream.getTracks().forEach(t=>t.stop());
 });
 
 resetControls();
