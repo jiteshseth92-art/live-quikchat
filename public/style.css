@@ -68,9 +68,6 @@ button.primary{
 }
 .tools label { display:block; font-size:12px; margin-bottom:4px; color:rgba(230,240,255,0.9); }
 
-/* file label (keeps default behaviour) */
-.file-label input{ display:inline-block; }
-
 /* centered searching animation overlay */
 #searchAnim{
   display:none;
@@ -92,12 +89,10 @@ button.primary{
   z-index:9999;
 }
 
-/* subtle pulse animation for overlay */
 @keyframes pulse{ 0%{opacity:.6; transform:scale(0.995)} 50%{opacity:1; transform:scale(1.02)} 100%{opacity:.95; transform:scale(1)} }
 
-/* responsive */
 @media (max-width:820px){
   .video-card{ width:95%; }
   .chat{ width:95%; }
   #searchAnim { width:85%; height:84px; left:7.5%; right:7.5%; }
-  }
+}
