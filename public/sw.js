@@ -1,26 +1,11 @@
-const CACHE_NAME = 'quikchat-v1';
-const FILES_TO_CACHE = [
-  '/',
-  '/index.html',
-  '/style.css',
-  '/script.js',
-  '/app.js',
-  '/manifest.json'
-];
-
-self.addEventListener('install', (evt) => {
-  evt.waitUntil(
-    caches.open(CACHE_NAME).then(cache => cache.addAll(FILES_TO_CACHE))
-  );
+// sw.js — simple cache-first service worker
+const CACHE = "quikchat-cache-v1";
+self.addEventListener("install", (e) => {
   self.skipWaiting();
-});
-
-self.addEventListener('activate', (evt) => {
-  evt.waitUntil(self.clients.claim());
-});
-
-self.addEventListener('fetch', (evt) => {
-  evt.respondWith(
-    caches.match(evt.request).then(resp => resp || fetch(evt.request))
+  e.waitUntil(
+    caches.open(CACHE).then(c => c.addAll(["/", "/index.html", "/style.css", "/app.js"]))
   );
+});
+self.addEventListener("fetch", (e) => {
+  e.respondWith(caches.match(e.request).then(r=> r || fetch(e.request)));
 });
