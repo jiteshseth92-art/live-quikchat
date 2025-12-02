@@ -115,4 +115,4 @@ function endCall() {
 
   if (localStream) localStream.getTracks().forEach(t => t.stop());
   localVideo.srcObject = null;
-}
+  }
