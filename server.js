@@ -1,232 +1,133 @@
-/**
- * server.js
- * Simple Express + Socket.io signaling server for QuikChat
- *
- * - Matchmaking: waiting list (in-memory)
- * - Rooms: simple in-memory room map
- * - Signaling: offer/answer/candidate/chat/image/sticker/leave
- *
- * Note: This is a minimal single-instance server appropriate for small beta.
- * For production at scale, persist state (Redis) and add auth, rate-limits and validation.
- */
-
-require('dotenv').config();
-const express = require('express');
-const http = require('http');
-const path = require('path');
-const cors = require('cors');
-const { Server } = require('socket.io');
+// server.js
+require("dotenv").config();
+const express = require("express");
+const http = require("http");
+const cors = require("cors");
+const { Server } = require("socket.io");
 
 const app = express();
-app.use(cors());
+app.use(cors({ origin: "*" }));
 app.use(express.json());
-
-// Serve static public folder
-const publicPath = path.join(__dirname, 'public');
-app.use(express.static(publicPath));
-
-// Basic health check
-app.get('/_health', (req, res) => res.send({ ok: true, time: Date.now() }));
+app.use(express.static(__dirname + "/public"));
 
 const server = http.createServer(app);
 const io = new Server(server, {
-  cors: {
-    origin: '*', // tighten for prod
-    methods: ['GET','POST']
-  },
-  transports: ['websocket','polling']
+  cors: { origin: "*" },
+  maxHttpBufferSize: 1e7
 });
 
-/**
- * In-memory state:
- * waiting: { socketId: { socket, meta } }
- * rooms: { roomId: { a: socketId, b: socketId, meta } }
- */
-const waiting = new Map();
-const rooms = new Map();
+// =========================
+// ENV VARIABLES
+// =========================
+const PORT = process.env.PORT || 3000;
 
-function makeRoomId() {
-  return 'r_' + Date.now().toString(36) + '_' + Math.random().toString(36,).slice(2,6);
-}
+// =========================
+// WAITING QUEUE
+// =========================
+let waiting = [];
 
-function matchPartner(opts) {
-  // opts: { socketId, gender, country, wantPrivate }
-  for (const [sid, w] of waiting.entries()) {
-    if (sid === opts.socketId) continue;
-    const meta = w.meta || {};
-    // match logic: gender & country & private flag
-    const genderOK = (!opts.gender || opts.gender === 'any' || !meta.gender || meta.gender === 'any' || opts.gender === meta.gender);
-    const countryOK = (!opts.country || opts.country === 'any' || !meta.country || meta.country === 'any' || opts.country === meta.country);
-    const privateOK = (!opts.wantPrivate && true) || (opts.wantPrivate && meta.wantPrivate); // both must want private
-    if (genderOK && countryOK && privateOK) return sid;
-  }
-  return null;
-}
-
-io.on('connection', socket => {
-  console.log('socket connected', socket.id);
-
-  // Clean up waiting/rooms if disconnected
-  function cleanupSocket() {
-    if (waiting.has(socket.id)) waiting.delete(socket.id);
-    // If in a room, notify partner and remove room
-    for (const [roomId, r] of rooms.entries()) {
-      if (r.a === socket.id || r.b === socket.id) {
-        const other = (r.a === socket.id) ? r.b : r.a;
-        const otherSocket = io.sockets.sockets.get(other);
-        if (otherSocket) {
-          otherSocket.emit('peer-left');
-        }
-        rooms.delete(roomId);
-      }
-    }
-  }
-
-  socket.on('disconnect', (reason) => {
-    console.log('socket disconnect', socket.id, reason);
-    cleanupSocket();
+// =========================
+// BROADCAST ADMIN STATS
+// =========================
+function broadcastAdminStats() {
+  io.emit("admin-stats", {
+    connected: io.engine.clientsCount || 0,
+    waiting: waiting.length,
   });
+}
+setInterval(broadcastAdminStats, 2000);
 
-  // findPartner - client asks server to find a partner
-  socket.on('findPartner', (opts) => {
+// =========================
+// SOCKET HANDLERS
+// =========================
+io.on("connection", (socket) => {
+  console.log("Connected:", socket.id);
+
+  // FIND PARTNER
+  socket.on("findPartner", (opts = {}) => {
     try {
-      // ensure basic structure
-      opts = opts || {};
-      const meta = {
-        gender: opts.gender || 'any',
-        country: opts.country || 'any',
+      socket.meta = {
+        gender: opts.gender || "any",
+        country: opts.country || "any",
         wantPrivate: !!opts.wantPrivate,
+        coins: opts.coins || 0,
         name: opts.name || null,
-        coins: opts.coins || 0
+        timestamp: Date.now()
       };
 
-      // Attempt immediate match
-      const partnerId = matchPartner({ socketId: socket.id, gender: meta.gender, country: meta.country, wantPrivate: meta.wantPrivate });
-      if (partnerId) {
-        // Found match: remove partner from waiting and create room
-        const partner = waiting.get(partnerId);
-        waiting.delete(partnerId);
-        const roomId = makeRoomId();
-        rooms.set(roomId, { a: socket.id, b: partnerId, meta: { createdAt: Date.now(), wantPrivate: meta.wantPrivate } });
+      waiting = waiting.filter(w => w.id !== socket.id);
 
-        // notify both sides - choose initiator randomly (so one creates offer)
-        const initiator = Math.random() > 0.5 ? socket.id : partnerId;
-        const initiatorSocket = io.sockets.sockets.get(initiator);
-        const otherSocket = io.sockets.sockets.get(initiator === socket.id ? partnerId : socket.id);
+      const matchIndex = waiting.findIndex(w => {
+        if (!w || !w.socket?.connected || w.id === socket.id) return false;
 
-        if (initiatorSocket) initiatorSocket.emit('partnerFound', { room: roomId, initiator: true, partnerMeta: partner.meta || {} });
-        if (otherSocket) otherSocket.emit('partnerFound', { room: roomId, initiator: false, partnerMeta: meta });
+        const genderOK = (socket.meta.gender === "any" || w.meta.gender === "any" || socket.meta.gender === w.meta.gender);
+        const countryOK = (socket.meta.country === "any" || w.meta.country === "any" || socket.meta.country === w.meta.country);
+        const privateOK = !(socket.meta.wantPrivate ^ w.meta.wantPrivate);
 
-        console.log('paired', socket.id, partnerId, 'room', roomId);
-        return;
+        return genderOK && countryOK && privateOK;
+      });
+
+      if (matchIndex !== -1) {
+        const partner = waiting.splice(matchIndex, 1)[0];
+
+        const room = `r_${Date.now().toString(36)}_${Math.random().toString(36).slice(2,6)}`;
+        socket.join(room);
+        partner.socket.join(room);
+
+        socket.room = room;
+        partner.socket.room = room;
+
+        socket.emit("partnerFound", { room, partnerId: partner.id, initiator: true, partnerMeta: partner.meta });
+        partner.socket.emit("partnerFound", { room, partnerId: socket.id, initiator: false, partnerMeta: socket.meta });
+
+        console.log(`Paired: ${socket.id} <-> ${partner.id} | Room: ${room}`);
+      } else {
+        waiting.push({ id: socket.id, socket, meta: socket.meta });
+        socket.emit("waiting");
       }
 
-      // otherwise enqueue this socket into waiting list
-      waiting.set(socket.id, { socket, meta });
-      socket.emit('waiting');
-      // auto timeout for waiting (45s)
-      setTimeout(() => {
-        if (waiting.has(socket.id)) {
-          waiting.delete(socket.id);
-          try { socket.emit('waitingTimeout'); } catch(e){ }
-        }
-      }, 45000);
+      broadcastAdminStats();
     } catch (e) {
-      console.warn('findPartner error', e);
+      console.error("findPartner error:", e);
     }
   });
 
-  // Signaling: offer/answer/candidate forwarded to the other peer in same room
-  socket.on('offer', (payload) => {
-    // find room and forward to other
-    for (const [roomId, r] of rooms.entries()) {
-      if (r.a === socket.id || r.b === socket.id) {
-        const other = (r.a === socket.id) ? r.b : r.a;
-        const otherSocket = io.sockets.sockets.get(other);
-        if (otherSocket) otherSocket.emit('offer', payload);
-        break;
-      }
+  // SIGNALING
+  socket.on("offer", (p) => socket.room && socket.to(socket.room).emit("offer", p));
+  socket.on("answer", (p) => socket.room && socket.to(socket.room).emit("answer", p));
+  socket.on("candidate", (c) => socket.room && socket.to(socket.room).emit("candidate", c));
+
+  // CHAT / IMAGE / STICKER
+  socket.on("chat", (d) => socket.room && socket.to(socket.room).emit("chat", d));
+  socket.on("image", (d) => socket.room && socket.to(socket.room).emit("image", d));
+  socket.on("sticker", (d) => socket.room && socket.to(socket.room).emit("sticker", d));
+
+  // LEAVE
+  socket.on("leave", () => {
+    if (socket.room) {
+      socket.to(socket.room).emit("peer-left");
+      socket.leave(socket.room);
+      socket.room = null;
     }
+    waiting = waiting.filter(w => w.id !== socket.id);
   });
 
-  socket.on('answer', (payload) => {
-    for (const [roomId, r] of rooms.entries()) {
-      if (r.a === socket.id || r.b === socket.id) {
-        const other = (r.a === socket.id) ? r.b : r.a;
-        const otherSocket = io.sockets.sockets.get(other);
-        if (otherSocket) otherSocket.emit('answer', payload);
-        break;
-      }
-    }
-  });
-
-  socket.on('candidate', (payload) => {
-    for (const [roomId, r] of rooms.entries()) {
-      if (r.a === socket.id || r.b === socket.id) {
-        const other = (r.a === socket.id) ? r.b : r.a;
-        const otherSocket = io.sockets.sockets.get(other);
-        if (otherSocket) otherSocket.emit('candidate', payload);
-        break;
-      }
-    }
-  });
-
-  // Chat / image / sticker
-  socket.on('chat', (msg) => {
-    for (const [roomId, r] of rooms.entries()) {
-      if (r.a === socket.id || r.b === socket.id) {
-        const other = (r.a === socket.id) ? r.b : r.a;
-        const otherSocket = io.sockets.sockets.get(other);
-        if (otherSocket) otherSocket.emit('chat', msg);
-        break;
-      }
-    }
-  });
-
-  socket.on('image', (img) => {
-    for (const [roomId, r] of rooms.entries()) {
-      if (r.a === socket.id || r.b === socket.id) {
-        const other = (r.a === socket.id) ? r.b : r.a;
-        const otherSocket = io.sockets.sockets.get(other);
-        if (otherSocket) otherSocket.emit('image', img);
-        break;
-      }
-    }
-  });
-
-  socket.on('sticker', (st) => {
-    for (const [roomId, r] of rooms.entries()) {
-      if (r.a === socket.id || r.b === socket.id) {
-        const other = (r.a === socket.id) ? r.b : r.a;
-        const otherSocket = io.sockets.sockets.get(other);
-        if (otherSocket) otherSocket.emit('sticker', st);
-        break;
-      }
-    }
-  });
-
-  // leave: user wants to end call
-  socket.on('leave', () => {
-    for (const [roomId, r] of rooms.entries()) {
-      if (r.a === socket.id || r.b === socket.id) {
-        const other = (r.a === socket.id) ? r.b : r.a;
-        const otherSocket = io.sockets.sockets.get(other);
-        if (otherSocket) otherSocket.emit('peer-left');
-        rooms.delete(roomId);
-        break;
-      }
-    }
-    // cleanup waiting too
-    if (waiting.has(socket.id)) waiting.delete(socket.id);
-  });
-
-  // optional: allow client to cancel waiting explicitly
-  socket.on('cancelWaiting', () => {
-    if (waiting.has(socket.id)) waiting.delete(socket.id);
+  // DISCONNECT
+  socket.on("disconnect", () => {
+    waiting = waiting.filter(w => w.id !== socket.id);
+    if (socket.room) socket.to(socket.room).emit("peer-left");
+    socket.room = null;
+    broadcastAdminStats();
+    console.log("Disconnected:", socket.id);
   });
 });
 
-const PORT = process.env.PORT || parseInt(process.env.APP_PORT || "3000",10) || 3000;
-server.listen(PORT, () => {
-  console.log('Server listening on port', PORT);
-});
+// =========================
+// ROOT
+// =========================
+app.get("/", (req, res) => res.send("QuikChat Signaling Server Running ✔️"));
+
+// =========================
+// START
+// =========================
+server.listen(PORT, () => console.log(`🚀 Server listening on ${PORT}`));
