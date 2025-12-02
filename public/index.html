@@ -1,23 +1,103 @@
-<title>QuikChat — Random 1:1 Video Chat</title>
-<meta name="description" content="QuikChat — Random 1:1 video chat. Meet people instantly, send images & stickers, private calls. No download required." />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<link rel="canonical" href="https://YOUR_DOMAIN_HERE/" />
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>QuikChat — Random Video Chat</title>
+  <link rel="manifest" href="/manifest.json" />
+  <meta name="theme-color" content="#0052ff" />
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <div id="app">
+    <header>
+      <h1>QuikChat</h1>
+      <div id="statusTop">Ready</div>
+    </header>
 
-<!-- Open Graph -->
-<meta property="og:type" content="website" />
-<meta property="og:title" content="QuikChat — Random 1:1 Video Chat" />
-<meta property="og:description" content="Meet people instantly — video, chat, stickers. No download required." />
-<meta property="og:url" content="https://YOUR_DOMAIN_HERE/" />
-<meta property="og:image" content="https://YOUR_DOMAIN_HERE/social-card.png" />
+    <div class="video-wrap">
+      <div class="video-card">
+        <div class="label">You <span id="localName"></span></div>
+        <div class="video-box">
+          <video id="localVideo" autoplay muted playsinline></video>
+          <img id="localSticker" class="sticker" hidden />
+        </div>
+      </div>
 
-<!-- Twitter -->
-<meta name="twitter:card" content="summary_large_image" />
-<meta name="twitter:title" content="QuikChat — Random 1:1 Video Chat" />
-<meta name="twitter:description" content="Meet people instantly — video, chat, stickers. No download required." />
-<meta name="twitter:image" content="https://YOUR_DOMAIN_HERE/social-card.png" />
+      <div class="video-card">
+        <div class="label">Stranger</div>
+        <div class="video-box">
+          <video id="remoteVideo" autoplay playsinline></video>
+          <img id="remoteSticker" class="sticker" hidden />
+        </div>
+      </div>
+    </div>
 
-<!-- PWA manifest -->
-<link rel="manifest" href="/manifest.json" />
-<meta name="theme-color" content="#0066ff" />
-<!-- favicon (optional) -->
-<link rel="icon" href="/icons/icon-192.png" />
+    <div class="controls center-controls">
+      <button id="findBtn" class="primary">Find</button>
+      <button id="nextBtn" disabled>Next</button>
+      <button id="endBtn" disabled>End</button>
+      <button id="muteBtn">Mute</button>
+      <button id="videoBtn">Video Off</button>
+      <button id="switchCamBtn">Switch Cam</button>
+    </div>
+
+    <div class="center-controls extras">
+      <div id="timer">00:00</div>
+      <div class="tools">
+        <label>Gender</label>
+        <select id="genderFilter">
+          <option value="any">Any</option>
+          <option value="male">Male</option>
+          <option value="female">Female</option>
+        </select>
+
+        <label>Country</label>
+        <select id="countryFilter">
+          <option value="any">Any</option>
+          <option value="IN">India</option>
+          <option value="US">USA</option>
+        </select>
+
+        <label>Name</label>
+        <input id="nameInput" type="text" placeholder="Anonymous" />
+        <button id="randName">Rand</button>
+      </div>
+    </div>
+
+    <div class="chat">
+      <div id="chatBox"></div>
+      <div class="chat-controls">
+        <input id="chatInput" placeholder="Type a message..." />
+        <button id="sendBtn">Send</button>
+      </div>
+    </div>
+
+    <div style="margin-top:12px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">
+      <label class="file-label">
+        <input id="imageUpload" type="file" accept="image/*" style="display:none" />
+        <button id="uploadBtn">Send Image</button>
+      </label>
+
+      <label class="file-label">
+        <input id="stickerUpload" type="file" accept="image/*" style="display:none" />
+        <button id="stickerBtn">Sticker</button>
+      </label>
+    </div>
+
+    <div id="searchAnim">Searching...</div>
+
+    <!-- sounds (optional elements) -->
+    <audio id="connectSound" hidden></audio>
+    <audio id="disconnectSound" hidden></audio>
+    <audio id="foundSound" hidden></audio>
+  </div>
+
+  <!-- Firebase SDKs (use official hosted URLs) -->
+  <script src="https://www.gstatic.com/firebasejs/9.24.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.24.0/firebase-database-compat.js"></script>
+
+  <!-- App (Firebase RTDB signalling client) -->
+  <script src="/app.js"></script>
+</body>
+</html>
