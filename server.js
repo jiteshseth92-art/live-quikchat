@@ -4,11 +4,12 @@ const express = require("express");
 const http = require("http");
 const cors = require("cors");
 const { Server } = require("socket.io");
+const path = require("path");
 
 const app = express();
 app.use(cors({ origin: "*" }));
 app.use(express.json());
-app.use(express.static(__dirname + "/public"));
+app.use(express.static(path.join(__dirname, "public")));
 
 const server = http.createServer(app);
 const io = new Server(server, {
@@ -16,34 +17,20 @@ const io = new Server(server, {
   maxHttpBufferSize: 1e7
 });
 
-// =========================
-// ENV VARIABLES
-// =========================
-const PORT = process.env.PORT || 3000;
-
-// =========================
-// WAITING QUEUE
-// =========================
+const PORT = process.env.PORT || 10000;
 let waiting = [];
 
-// =========================
-// BROADCAST ADMIN STATS
-// =========================
 function broadcastAdminStats() {
   io.emit("admin-stats", {
-    connected: io.engine.clientsCount || 0,
+    connected: io.engine ? (io.engine.clientsCount || 0) : 0,
     waiting: waiting.length,
   });
 }
 setInterval(broadcastAdminStats, 2000);
 
-// =========================
-// SOCKET HANDLERS
-// =========================
 io.on("connection", (socket) => {
   console.log("Connected:", socket.id);
 
-  // FIND PARTNER
   socket.on("findPartner", (opts = {}) => {
     try {
       socket.meta = {
@@ -55,15 +42,15 @@ io.on("connection", (socket) => {
         timestamp: Date.now()
       };
 
+      // remove previous same id
       waiting = waiting.filter(w => w.id !== socket.id);
 
+      // find match
       const matchIndex = waiting.findIndex(w => {
         if (!w || !w.socket?.connected || w.id === socket.id) return false;
-
         const genderOK = (socket.meta.gender === "any" || w.meta.gender === "any" || socket.meta.gender === w.meta.gender);
         const countryOK = (socket.meta.country === "any" || w.meta.country === "any" || socket.meta.country === w.meta.country);
         const privateOK = !(socket.meta.wantPrivate ^ w.meta.wantPrivate);
-
         return genderOK && countryOK && privateOK;
       });
 
@@ -92,17 +79,17 @@ io.on("connection", (socket) => {
     }
   });
 
-  // SIGNALING
-  socket.on("offer", (p) => socket.room && socket.to(socket.room).emit("offer", p));
-  socket.on("answer", (p) => socket.room && socket.to(socket.room).emit("answer", p));
-  socket.on("candidate", (c) => socket.room && socket.to(socket.room).emit("candidate", c));
+  // signaling
+  socket.on("offer", (p) => { if (socket.room) socket.to(socket.room).emit("offer", p); });
+  socket.on("answer", (p) => { if (socket.room) socket.to(socket.room).emit("answer", p); });
+  socket.on("candidate", (c) => { if (socket.room) socket.to(socket.room).emit("candidate", c); });
 
-  // CHAT / IMAGE / STICKER
-  socket.on("chat", (d) => socket.room && socket.to(socket.room).emit("chat", d));
-  socket.on("image", (d) => socket.room && socket.to(socket.room).emit("image", d));
-  socket.on("sticker", (d) => socket.room && socket.to(socket.room).emit("sticker", d));
+  // chat / image / sticker
+  socket.on("chat", (d) => { if (socket.room) socket.to(socket.room).emit("chat", d); });
+  socket.on("image", (d) => { if (socket.room) socket.to(socket.room).emit("image", d); });
+  socket.on("sticker", (d) => { if (socket.room) socket.to(socket.room).emit("sticker", d); });
 
-  // LEAVE
+  // leave
   socket.on("leave", () => {
     if (socket.room) {
       socket.to(socket.room).emit("peer-left");
@@ -112,7 +99,6 @@ io.on("connection", (socket) => {
     waiting = waiting.filter(w => w.id !== socket.id);
   });
 
-  // DISCONNECT
   socket.on("disconnect", () => {
     waiting = waiting.filter(w => w.id !== socket.id);
     if (socket.room) socket.to(socket.room).emit("peer-left");
@@ -122,12 +108,6 @@ io.on("connection", (socket) => {
   });
 });
 
-// =========================
-// ROOT
-// =========================
 app.get("/", (req, res) => res.send("QuikChat Signaling Server Running ✔️"));
 
-// =========================
-// START
-// =========================
 server.listen(PORT, () => console.log(`🚀 Server listening on ${PORT}`));
