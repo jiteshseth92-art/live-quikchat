@@ -1,103 +1,80 @@
-                                                      </html>
 <!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>QuikChat — Live</title>
-  <link rel="stylesheet" href="style.css" />
+  <title>QuikChat — Random Video Chat</title>
+  <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
   <div id="app">
     <header>
       <h1>QuikChat</h1>
-      <div id="statusTop">Ready</div>
-      <div class="tools">
-        <div>
-          <label>Gender</label>
-          <select id="genderFilter">
-            <option value="any">Any</option>
+      <div id="statusTop">Initializing...</div>
+    </header>
+
+    <main>
+      <div class="video-wrap">
+        <video id="localVideo" autoplay playsinline muted></video>
+        <video id="remoteVideo" autoplay playsinline></video>
+        <img id="localSticker" hidden class="sticker local" />
+        <img id="remoteSticker" hidden class="sticker remote" />
+      </div>
+
+      <div class="controls">
+        <input id="nameInput" placeholder="Display name" />
+        <div class="btn-row">
+          <select id="genderSelect">
+            <option value="any">Any gender</option>
             <option value="male">Male</option>
             <option value="female">Female</option>
           </select>
-        </div>
-        <div>
-          <label>Country</label>
-          <select id="countryFilter">
-            <option value="any">Any</option>
-            <option value="india">India</option>
-            <option value="pakistan">Pakistan</option>
-            <option value="bangladesh">Bangladesh</option>
-            <option value="nepal">Nepal</option>
-            <option value="usa">USA</option>
-            <option value="uk">UK</option>
+
+          <select id="countrySelect">
+            <option value="any">Any country</option>
+            <option value="IN">India</option>
+            <option value="US">USA</option>
+            <option value="PH">Philippines</option>
           </select>
         </div>
-        <div>
-          <label>Name</label>
-          <input id="nameInput" type="text" placeholder="Your name (optional)" />
-          <button id="randName">Rand</button>
+
+        <div class="btn-row">
+          <button id="findBtn">Find</button>
+          <button id="nextBtn" disabled>Next</button>
+          <button id="disconnectBtn" disabled>Disconnect</button>
         </div>
-        <div><label>Users</label><span id="countVal">0</span></div>
-      </div>
-    </header>
 
-    <section class="video-wrap">
-      <div class="video-card">
-        <div class="label">Remote</div>
-        <div class="video-box">
-          <video id="remoteVideo" autoplay playsinline></video>
-          <img id="remoteSticker" class="sticker" hidden />
+        <div class="btn-row">
+          <button id="muteBtn">Mute</button>
+          <button id="videoBtn">Video Off</button>
+          <button id="switchCamBtn">Switch Cam</button>
         </div>
-      </div>
 
-      <div class="video-card">
-        <div class="label">You <span id="localName"></span></div>
-        <div class="video-box">
-          <video id="localVideo" autoplay muted playsinline></video>
-          <img id="localSticker" class="sticker" hidden />
+        <div class="media-row">
+          <button id="uploadBtn">Send Image</button>
+          <input id="imageUpload" type="file" accept="image/*" style="display:none" />
+          <button id="stickerBtn">Send Sticker</button>
+          <input id="stickerInput" type="file" accept="image/*" style="display:none" />
+          <img id="localSticker" class="sticker local" hidden />
         </div>
+
+        <div class="timer">Call: <span id="timer">00:00</span></div>
+        <div id="coinsVal">0</div>
+        <div id="localName">(You)</div>
       </div>
-    </section>
 
-    <div class="controls">
-      <button id="findBtn" class="primary">Find</button>
-      <button id="nextBtn" disabled>Next</button>
-      <button id="endBtn" disabled>End</button>
-      <div class="center-controls">
-        <button id="muteBtn">Mute</button>
-        <button id="videoBtn">Video Off</button>
-        <button id="switchCamBtn">Switch Cam</button>
-        <div id="timer">00:00</div>
-      </div>
-    </div>
-
-    <div class="extras">
-      <label class="file-label">
-        <input id="stickerUpload" type="file" accept="image/*" hidden />
-        <button id="uploadStickerBtn" onclick="document.getElementById('stickerUpload').click()">Send Sticker</button>
-      </label>
-      <button id="reportBtn">Report</button>
-    </div>
-
-    <div class="row chat-row">
-      <div class="chat">
+      <aside class="chat-panel">
         <div id="chatBox" class="chat-box"></div>
-        <div class="chat-controls">
-          <input id="chatInput" type="text" placeholder="Say hi..." />
-          <button id="sendBtn">Send</button>
+        <div class="chat-input">
+          <input id="chatInput" placeholder="Say hi..." />
+          <button id="sendChat">Send</button>
         </div>
-      </div>
-    </div>
+      </aside>
+    </main>
 
-    <div id="searchAnim" style="display:none">Searching…</div>
+    <!-- client script -->
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/script.js"></script>
   </div>
-
-  <!-- firebase -->
-  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
-
-  <!-- client app -->
-  <script src="app.js"></script>
 </body>
 </html>
