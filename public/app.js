@@ -47,9 +47,9 @@ const countryFilter = document.getElementById('countryFilter'); // new country s
 const countVal = document.getElementById('countVal');
 
 /* sounds (tiny silent wav to avoid blocking) */
-const connectSound = new Audio();
-const disconnectSound = new Audio();
-const foundSound = new Audio();
+const connectSound = document.getElementById('connectSound');
+const disconnectSound = document.getElementById('disconnectSound');
+const foundSound = document.getElementById('foundSound');
 connectSound.src = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABAAZGF0YQAAAAA=";
 disconnectSound.src = connectSound.src;
 foundSound.src = connectSound.src;
@@ -71,6 +71,7 @@ let roomsChildAddedListener = null;
 const ICE_CONFIG = {
   iceServers: [
     { urls: "stun:stun.l.google.com:19302" }
+    // Add TURN here if you have one: { urls: "turn:TURN_HOST:3478", username: "...", credential: "..." }
   ]
 };
 
@@ -93,7 +94,7 @@ async function refreshUserCount(){
     const waiting = snap.val() || {};
     const roomsSnap = await db.ref('rooms').once('value');
     const rooms = roomsSnap.val() || {};
-    const count = Object.keys(waiting).length + Object.keys(rooms).length;
+    const count = (Object.keys(waiting).length || 0) + (Object.keys(rooms).length || 0);
     countVal.innerText = count;
   }catch(e){ /* ignore */ }
 }
@@ -207,6 +208,7 @@ function listenRoomEvents(){
     if (v.from !== clientId) { remoteSticker.src = v.url; remoteSticker.hidden=false; }
   });
 
+  // if whole room node removed -> end locally
   db.ref(`rooms/${roomId}`).on('child_removed', snap => {
     appendChat('Room ended by host.');
     endCall(false);
@@ -222,9 +224,11 @@ async function findPartner(){
   await startLocalStream();
   await refreshUserCount();
 
+  // read limited waiting list (limit to 50 for safety)
   const waitingSnap = await db.ref('waiting').limitToFirst(50).once('value');
   const waiting = waitingSnap.val() || {};
 
+  // pick partner using filters: gender + country
   const myGender = (genderFilter && genderFilter.value) ? genderFilter.value : 'any';
   const myCountry = (countryFilter && countryFilter.value) ? countryFilter.value : 'any';
 
@@ -242,6 +246,7 @@ async function findPartner(){
   }
 
   if (otherId) {
+    // immediate pair: remove other waiting entry and create room
     try {
       await db.ref(`waiting/${otherId}`).remove().catch(()=>{});
       roomId = await createRoomWith(otherId);
@@ -252,9 +257,11 @@ async function findPartner(){
       foundSound.play().catch(()=>{});
     } catch(e){
       console.warn('immediate pair error', e);
+      // fallback to enqueue
       await enqueueSelf({ name: nameInput.value || randomName(), gender: myGender, country: myCountry });
     }
   } else {
+    // enqueue self and listen for a room where meta.callee == clientId
     await enqueueSelf({ name: nameInput.value || randomName(), gender: myGender, country: myCountry });
   }
 }
@@ -263,10 +270,12 @@ async function findPartner(){
 async function enqueueSelf(info){
   await addToWaiting(info);
   setStatus('Waiting for partner...');
+  // remove any previous rooms listener to avoid duplicates
   if (roomsChildAddedListener) {
     db.ref('rooms').off('child_added', roomsChildAddedListener);
     roomsChildAddedListener = null;
   }
+  // set listener to detect rooms created where meta.callee == clientId
   const onRoomAdded = async (snap) => {
     try {
       if (!snap.exists()) return;
@@ -365,7 +374,7 @@ stickerUpload.addEventListener('change', (e) => {
   if (!f) return;
   const r = new FileReader();
   r.onload = async () => {
-    if (localSticker) { localSticker.src = r.result; localSticker.hidden=false; }
+    localSticker.src = r.result; localSticker.hidden=false;
     if (roomId) await db.ref(`rooms/${roomId}/sticker`).set({ from: clientId, url: r.result, ts: Date.now() });
   };
   r.readAsDataURL(f);
@@ -383,8 +392,10 @@ function listenSticker(){
 /* end/cleanup */
 async function endCall(rematch=false){
   try {
+    // remove room listeners first
     if (roomId) {
       removeRoomListeners(roomId);
+      // remove room node so other peer sees end (optional)
       await db.ref(`rooms/${roomId}`).remove().catch(()=>{});
       roomId = null;
     }
@@ -395,8 +406,10 @@ async function endCall(rematch=false){
   stopTimer();
   findBtn.disabled=false; nextBtn.disabled=true; endBtn.disabled=true;
   setStatus('Disconnected');
+  // ensure we are not in waiting list
   await removeFromWaiting();
 
+  // remove rooms listener if present (we are no longer interested)
   if (roomsChildAddedListener) {
     db.ref('rooms').off('child_added', roomsChildAddedListener);
     roomsChildAddedListener = null;
@@ -412,9 +425,15 @@ window.addEventListener('beforeunload', () => {
 /* boot handlers */
 findBtn.onclick = async () => {
   findBtn.disabled=true; nextBtn.disabled=true; endBtn.disabled=false;
+  // set chosen name + filters into waiting info
   await findPartner();
 };
 randNameBtn.addEventListener('click', ()=>{ nameInput.value = randomName(); document.getElementById('localName').innerText = `(${nameInput.value})`; });
+
+/* update displayed name when user types */
+nameInput.addEventListener('input', ()=>{
+  document.getElementById('localName').innerText = `(${nameInput.value || ''})`;
+});
 
 /* small periodic refresh */
 setInterval(()=>refreshUserCount(), 8000);
