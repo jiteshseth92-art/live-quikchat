@@ -1,113 +1,68 @@
-// server.js
-require("dotenv").config();
-const express = require("express");
-const http = require("http");
-const cors = require("cors");
-const { Server } = require("socket.io");
-const path = require("path");
+import express from "express";
+import http from "http";
+import { Server } from "socket.io";
+import cors from "cors";
+import { AccessToken } from "livekit-server-sdk";
 
 const app = express();
-app.use(cors({ origin: "*" }));
-app.use(express.json());
-app.use(express.static(path.join(__dirname, "public")));
+app.use(cors());
+app.use(express.static("public"));
 
 const server = http.createServer(app);
-const io = new Server(server, {
-  cors: { origin: "*" },
-  maxHttpBufferSize: 1e7
-});
+const io = new Server(server, { cors: { origin: "*" } });
 
-const PORT = process.env.PORT || 10000;
-let waiting = [];
-
-function broadcastAdminStats() {
-  io.emit("admin-stats", {
-    connected: io.engine ? (io.engine.clientsCount || 0) : 0,
-    waiting: waiting.length,
-  });
-}
-setInterval(broadcastAdminStats, 2000);
+let waitingUser = null;
 
 io.on("connection", (socket) => {
-  console.log("Connected:", socket.id);
+  console.log("user connected", socket.id);
 
-  socket.on("findPartner", (opts = {}) => {
-    try {
-      socket.meta = {
-        gender: opts.gender || "any",
-        country: opts.country || "any",
-        wantPrivate: !!opts.wantPrivate,
-        coins: opts.coins || 0,
-        name: opts.name || null,
-        timestamp: Date.now()
-      };
+  socket.on("find", () => {
+    if (waitingUser) {
+      const partner = waitingUser;
+      waitingUser = null;
 
-      // remove previous same id
-      waiting = waiting.filter(w => w.id !== socket.id);
+      socket.partner = partner.id;
+      partner.partner = socket.id;
 
-      // find match
-      const matchIndex = waiting.findIndex(w => {
-        if (!w || !w.socket?.connected || w.id === socket.id) return false;
-        const genderOK = (socket.meta.gender === "any" || w.meta.gender === "any" || socket.meta.gender === w.meta.gender);
-        const countryOK = (socket.meta.country === "any" || w.meta.country === "any" || socket.meta.country === w.meta.country);
-        const privateOK = !(socket.meta.wantPrivate ^ w.meta.wantPrivate);
-        return genderOK && countryOK && privateOK;
-      });
+      socket.emit("match", partner.id);
+      partner.emit("match", socket.id);
 
-      if (matchIndex !== -1) {
-        const partner = waiting.splice(matchIndex, 1)[0];
-
-        const room = `r_${Date.now().toString(36)}_${Math.random().toString(36).slice(2,6)}`;
-        socket.join(room);
-        partner.socket.join(room);
-
-        socket.room = room;
-        partner.socket.room = room;
-
-        socket.emit("partnerFound", { room, partnerId: partner.id, initiator: true, partnerMeta: partner.meta });
-        partner.socket.emit("partnerFound", { room, partnerId: socket.id, initiator: false, partnerMeta: socket.meta });
-
-        console.log(`Paired: ${socket.id} <-> ${partner.id} | Room: ${room}`);
-      } else {
-        waiting.push({ id: socket.id, socket, meta: socket.meta });
-        socket.emit("waiting");
-      }
-
-      broadcastAdminStats();
-    } catch (e) {
-      console.error("findPartner error:", e);
+    } else {
+      waitingUser = socket;
     }
   });
 
-  // signaling
-  socket.on("offer", (p) => { if (socket.room) socket.to(socket.room).emit("offer", p); });
-  socket.on("answer", (p) => { if (socket.room) socket.to(socket.room).emit("answer", p); });
-  socket.on("candidate", (c) => { if (socket.room) socket.to(socket.room).emit("candidate", c); });
+  socket.on("offer", (data) => {
+    io.to(data.to).emit("offer", { offer: data.offer, from: socket.id });
+  });
 
-  // chat / image / sticker
-  socket.on("chat", (d) => { if (socket.room) socket.to(socket.room).emit("chat", d); });
-  socket.on("image", (d) => { if (socket.room) socket.to(socket.room).emit("image", d); });
-  socket.on("sticker", (d) => { if (socket.room) socket.to(socket.room).emit("sticker", d); });
+  socket.on("answer", (data) => {
+    io.to(data.to).emit("answer", { answer: data.answer });
+  });
 
-  // leave
-  socket.on("leave", () => {
-    if (socket.room) {
-      socket.to(socket.room).emit("peer-left");
-      socket.leave(socket.room);
-      socket.room = null;
-    }
-    waiting = waiting.filter(w => w.id !== socket.id);
+  socket.on("ice", (data) => {
+    io.to(data.to).emit("ice", data.ice);
   });
 
   socket.on("disconnect", () => {
-    waiting = waiting.filter(w => w.id !== socket.id);
-    if (socket.room) socket.to(socket.room).emit("peer-left");
-    socket.room = null;
-    broadcastAdminStats();
-    console.log("Disconnected:", socket.id);
+    if (waitingUser && waitingUser.id === socket.id) waitingUser = null;
+    if (socket.partner) io.to(socket.partner).emit("leave");
   });
 });
 
-app.get("/", (req, res) => res.send("QuikChat Signaling Server Running ✔️"));
+// livekit token generate
+app.get("/token", (req, res) => {
+  const { identity, room } = req.query;
 
-server.listen(PORT, () => console.log(`🚀 Server listening on ${PORT}`));
+  const at = new AccessToken(
+    process.env.LIVEKIT_API_KEY,
+    process.env.LIVEKIT_SECRET,
+    { identity }
+  );
+  at.addGrant({ room, roomJoin: true });
+
+  res.send({ token: at.toJwt() });
+});
+
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => console.log(`SERVER RUNNING ON PORT ${PORT}`));
