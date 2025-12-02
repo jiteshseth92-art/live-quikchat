@@ -21,22 +21,22 @@ io.on("connection", (socket) => {
   console.log("User connected:", socket.id);
 
   // Find Partner
-  socket.on("findPartner", () => {
+  socket.on("find", () => {
     if (!waitingUser) {
       waitingUser = socket;
-      socket.emit("waiting", "Searching for partner…");
+      socket.emit("status", "Searching for partner…");
     } else {
       const partner = waitingUser;
       waitingUser = null;
 
-      socket.emit("match", { partnerID: partner.id });
-      partner.emit("match", { partnerID: socket.id });
+      socket.emit("found", { partnerID: partner.id });
+      partner.emit("found", { partnerID: socket.id });
 
-      console.log("Matched", partner.id, " & ", socket.id);
+      console.log("Matched:", partner.id, "&", socket.id);
     }
   });
 
-  // WebRTC Signalling
+  // WebRTC Signaling
   socket.on("offer", (data) => {
     socket.to(data.partnerID).emit("offer", data.offer);
   });
@@ -45,21 +45,27 @@ io.on("connection", (socket) => {
     socket.to(data.partnerID).emit("answer", data.answer);
   });
 
-  socket.on("ice-candidate", (data) => {
-    socket.to(data.partnerID).emit("ice-candidate", data.candidate);
+  socket.on("iceCandidate", (data) => {
+    socket.to(data.partnerID).emit("iceCandidate", data.candidate);
+  });
+
+  socket.on("leave", () => {
+    socket.broadcast.emit("leave");
   });
 
   socket.on("disconnect", () => {
     console.log("Disconnected:", socket.id);
+
     if (waitingUser && waitingUser.id === socket.id) {
       waitingUser = null;
     }
+
     socket.broadcast.emit("partner-disconnected");
   });
 });
 
 app.get("/", (req, res) => {
-  res.send("QuikChat Live Server Running");
+  res.send("QuikChat Live Server Running 💗");
 });
 
 const PORT = process.env.PORT || 3000;
