@@ -1,75 +1,80 @@
-// server.js
-// QuikChat - Random 1on1 Video Chat Signaling Server
-
-const express = require("express");
-const http = require("http");
-const { Server } = require("socket.io");
+// server.js - minimal signaling + matchmaking
+const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
+const path = require('path');
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server);
+const io = new Server(server, {
+  cors: { origin: "*", methods: ["GET","POST"] }
+});
 
-app.use(express.static("public"));
+app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.json());
 
-let waitingUsers = []; // queue for matching
+const waitingQueue = [];
+const activeRooms = new Map();
 
-io.on("connection", (socket) => {
-  console.log("User connected:", socket.id);
+io.on('connection', socket => {
+  console.log('Connected:', socket.id);
 
-  socket.on("findPartner", (data) => {
-    console.log("Searching partner for:", socket.id);
+  socket.on('findPartner', (data = {}) => {
+    const idx = waitingQueue.indexOf(socket.id);
+    if (idx !== -1) waitingQueue.splice(idx, 1);
 
-    if (waitingUsers.length > 0) {
-      // match with first waiting user
-      const partnerId = waitingUsers.shift();
+    let partner = null;
+    while (waitingQueue.length) {
+      const cand = waitingQueue.shift();
+      if (cand === socket.id) continue;
+      if (io.sockets.sockets.get(cand)) { partner = cand; break; }
+    }
 
-      const roomId = `${socket.id}-${partnerId}`;
-
+    if (partner) {
+      const roomId = `${socket.id}-${partner}-${Date.now().toString(36).slice(0,6)}`;
+      activeRooms.set(roomId, { users: [socket.id, partner], createdAt: Date.now() });
       socket.join(roomId);
-      io.to(partnerId).socketsJoin(roomId);
+      io.to(partner).socketsJoin(roomId);
 
-      io.to(socket.id).emit("partnerFound", { roomId, partnerId });
-      io.to(partnerId).emit("partnerFound", { roomId, partnerId: socket.id });
+      io.to(socket.id).emit('partnerFound', { roomId, partnerId: partner });
+      io.to(partner).emit('partnerFound', { roomId, partnerId: socket.id });
 
-      console.log("Matched:", socket.id, "<--->", partnerId);
+      console.log('Matched:', socket.id, '<->', partner, 'room:', roomId);
     } else {
-      waitingUsers.push(socket.id);
-      socket.emit("waiting");
-      console.log("Added to waiting queue:", socket.id);
+      waitingQueue.push(socket.id);
+      socket.emit('waiting');
+      console.log('Queued:', socket.id, 'waiting length:', waitingQueue.length);
     }
   });
 
-  socket.on("offer", (data) => {
-    io.to(data.to).emit("offer", { from: socket.id, sdp: data.sdp, roomId: data.roomId });
+  socket.on('offer', (data) => {
+    if (data && data.to) io.to(data.to).emit('offer', { from: socket.id, sdp: data.sdp, roomId: data.roomId });
+  });
+  socket.on('answer', (data) => {
+    if (data && data.to) io.to(data.to).emit('answer', { from: socket.id, sdp: data.sdp });
+  });
+  socket.on('candidate', (data) => {
+    if (data && data.to) io.to(data.to).emit('candidate', { from: socket.id, candidate: data.candidate });
   });
 
-  socket.on("answer", (data) => {
-    io.to(data.to).emit("answer", { from: socket.id, sdp: data.sdp });
+  socket.on('chat', (data) => {
+    if (data && data.roomId) socket.to(data.roomId).emit('chat', { text: data.text });
   });
 
-  socket.on("candidate", (data) => {
-    io.to(data.to).emit("candidate", { from: socket.id, candidate: data.candidate });
+  socket.on('leaveRoom', ({ roomId }) => {
+    if (!roomId) return;
+    socket.to(roomId).emit('partnerDisconnected');
+    activeRooms.delete(roomId);
+    socket.leave(roomId);
   });
 
-  socket.on("chat", (data) => {
-    socket.to(data.roomId).emit("chat", { text: data.text });
-  });
-
-  socket.on("file", (data) => {
-    socket.to(data.roomId).emit("file", data);
-  });
-
-  socket.on("leaveRoom", ({ roomId }) => {
-    socket.to(roomId).emit("partnerDisconnected");
-    console.log("User left room:", socket.id);
-  });
-
-  socket.on("disconnect", () => {
-    waitingUsers = waitingUsers.filter((id) => id !== socket.id);
-    socket.broadcast.emit("partnerDisconnected");
-    console.log("User disconnected:", socket.id);
+  socket.on('disconnect', () => {
+    console.log('Disconnected:', socket.id);
+    const i = waitingQueue.indexOf(socket.id);
+    if (i !== -1) waitingQueue.splice(i, 1);
+    socket.broadcast.emit('partnerDisconnected');
   });
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log("🔥 QuikChat server running on port", PORT));
+server.listen(PORT, () => console.log(`QuikChat server running on port ${PORT}`));
