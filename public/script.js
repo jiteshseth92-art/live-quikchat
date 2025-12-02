@@ -1,49 +1,64 @@
-const socket = io("https://live-quikchat-1-3ima.onrender.com", {
+const socket = io("https://live-quikchat-3-fczj.onrender.com", {
   transports: ["websocket"]
 });
 
 let localStream;
 let remoteStream;
 let peerConnection;
+let partnerID = null;
 
 const config = {
   iceServers: [
-    { urls: "stun:stun.l.google.com:19302" },
-    { urls: "stun:stun1.l.google.com:19302" }
+    { urls: "stun:stun.l.google.com:19302" }
   ]
 };
 
 const findBtn = document.getElementById("findBtn");
-const nextBtn = document.getElementById("nextBtn");
-const disconnectBtn = document.getElementById("disconnectBtn");
-const statusTop = document.getElementById("statusTop");
+const stopBtn = document.getElementById("stopBtn");
+const statusText = document.getElementById("statusText");
 const localVideo = document.getElementById("localVideo");
 const remoteVideo = document.getElementById("remoteVideo");
 
-findBtn.onclick = () => {
-  statusTop.innerText = "Searching… 🔍";
+findBtn.addEventListener("click", () => {
+  statusText.innerText = "Searching… 🔍";
   findBtn.disabled = true;
-  nextBtn.disabled = true;
-  disconnectBtn.disabled = false;
   socket.emit("find");
-};
+});
 
-nextBtn.onclick = () => {
+stopBtn.addEventListener("click", () => {
   socket.emit("leave");
   endCall();
-  statusTop.innerText = "Searching new partner… 🔁";
-  socket.emit("find");
-};
-
-disconnectBtn.onclick = () => {
-  socket.emit("leave");
-  endCall();
+  statusText.innerText = "Disconnected ❌";
   findBtn.disabled = false;
-  nextBtn.disabled = true;
-  disconnectBtn.disabled = true;
-  statusTop.innerText = "Disconnected ❌";
-};
+});
 
+// On match found
+socket.on("found", async (data) => {
+  partnerID = data.partnerID;
+  statusText.innerText = "Partner Found 🎉 Connecting…";
+  await startCall();
+});
+
+// Offer / Answer
+socket.on("offer", async (offer) => {
+  if (!peerConnection) await createPeerConnection();
+  await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+
+  const answer = await peerConnection.createAnswer();
+  await peerConnection.setLocalDescription(answer);
+
+  socket.emit("answer", { answer, partnerID });
+});
+
+socket.on("answer", async (answer) => {
+  await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+});
+
+socket.on("iceCandidate", async (candidate) => {
+  if (peerConnection) await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+});
+
+// create peer
 async function createPeerConnection() {
   peerConnection = new RTCPeerConnection(config);
 
@@ -57,42 +72,9 @@ async function createPeerConnection() {
   };
 
   peerConnection.onicecandidate = (event) => {
-    if (event.candidate) {
-      socket.emit("iceCandidate", event.candidate);
-    }
+    if (event.candidate) socket.emit("iceCandidate", { candidate: event.candidate, partnerID });
   };
 }
-
-// Socket events
-socket.on("found", async () => {
-  statusTop.innerText = "Partner Found 🎉 Connecting…";
-  nextBtn.disabled = false;
-  await startCall();
-});
-
-socket.on("offer", async (offer) => {
-  if (!peerConnection) await createPeerConnection();
-  await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
-  const answer = await peerConnection.createAnswer();
-  await peerConnection.setLocalDescription(answer);
-  socket.emit("answer", answer);
-});
-
-socket.on("answer", async (answer) => {
-  await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
-});
-
-socket.on("iceCandidate", async (candidate) => {
-  if (peerConnection) {
-    await peerConnection.addIceCandidate(candidate);
-  }
-});
-
-socket.on("leave", () => {
-  endCall();
-  statusTop.innerText = "Partner Disconnected 🔚";
-  nextBtn.disabled = true;
-});
 
 // Start call
 async function startCall() {
@@ -100,9 +82,11 @@ async function startCall() {
   localVideo.srcObject = localStream;
 
   await createPeerConnection();
+
   const offer = await peerConnection.createOffer();
   await peerConnection.setLocalDescription(offer);
-  socket.emit("offer", offer);
+
+  socket.emit("offer", { offer, partnerID });
 }
 
 // End call
@@ -110,9 +94,9 @@ function endCall() {
   if (peerConnection) peerConnection.close();
   peerConnection = null;
 
-  if (remoteVideo.srcObject) remoteVideo.srcObject.getTracks().forEach(t => t.stop());
-  remoteVideo.srcObject = null;
-
   if (localStream) localStream.getTracks().forEach(t => t.stop());
+  if (remoteStream) remoteStream.getTracks().forEach(t => t.stop());
+
   localVideo.srcObject = null;
-  }
+  remoteVideo.srcObject = null;
+    }
