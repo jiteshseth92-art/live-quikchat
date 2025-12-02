@@ -1,103 +1,28 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>QuikChat — Random Video Chat</title>
-  <link rel="manifest" href="/manifest.json" />
-  <meta name="theme-color" content="#0052ff" />
-  <link rel="stylesheet" href="/style.css" />
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>QuikChat Global</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="/socket.io/socket.io.js"></script>
 </head>
 <body>
-  <div id="app">
-    <header>
-      <h1>QuikChat</h1>
-      <div id="statusTop">Ready</div>
-    </header>
 
-    <div class="video-wrap">
-      <div class="video-card">
-        <div class="label">You <span id="localName"></span></div>
-        <div class="video-box">
-          <video id="localVideo" autoplay muted playsinline></video>
-          <img id="localSticker" class="sticker" hidden />
-        </div>
-      </div>
+  <h1 class="title">QuikChat Global 🌍</h1>
 
-      <div class="video-card">
-        <div class="label">Stranger</div>
-        <div class="video-box">
-          <video id="remoteVideo" autoplay playsinline></video>
-          <img id="remoteSticker" class="sticker" hidden />
-        </div>
-      </div>
-    </div>
-
-    <div class="controls center-controls">
-      <button id="findBtn" class="primary">Find</button>
-      <button id="nextBtn" disabled>Next</button>
-      <button id="endBtn" disabled>End</button>
-      <button id="muteBtn">Mute</button>
-      <button id="videoBtn">Video Off</button>
-      <button id="switchCamBtn">Switch Cam</button>
-    </div>
-
-    <div class="center-controls extras">
-      <div id="timer">00:00</div>
-      <div class="tools">
-        <label>Gender</label>
-        <select id="genderFilter">
-          <option value="any">Any</option>
-          <option value="male">Male</option>
-          <option value="female">Female</option>
-        </select>
-
-        <label>Country</label>
-        <select id="countryFilter">
-          <option value="any">Any</option>
-          <option value="IN">India</option>
-          <option value="US">USA</option>
-        </select>
-
-        <label>Name</label>
-        <input id="nameInput" type="text" placeholder="Anonymous" />
-        <button id="randName">Rand</button>
-      </div>
-    </div>
-
-    <div class="chat">
-      <div id="chatBox"></div>
-      <div class="chat-controls">
-        <input id="chatInput" placeholder="Type a message..." />
-        <button id="sendBtn">Send</button>
-      </div>
-    </div>
-
-    <div style="margin-top:12px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">
-      <label class="file-label">
-        <input id="imageUpload" type="file" accept="image/*" style="display:none" />
-        <button id="uploadBtn">Send Image</button>
-      </label>
-
-      <label class="file-label">
-        <input id="stickerUpload" type="file" accept="image/*" style="display:none" />
-        <button id="stickerBtn">Sticker</button>
-      </label>
-    </div>
-
-    <div id="searchAnim">Searching...</div>
-
-    <!-- sounds (optional elements) -->
-    <audio id="connectSound" hidden></audio>
-    <audio id="disconnectSound" hidden></audio>
-    <audio id="foundSound" hidden></audio>
+  <div class="video-container">
+    <video id="localVideo" autoplay muted playsinline></video>
+    <video id="remoteVideo" autoplay playsinline></video>
   </div>
 
-  <!-- Firebase SDKs (use official hosted URLs) -->
-  <script src="https://www.gstatic.com/firebasejs/9.24.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.24.0/firebase-database-compat.js"></script>
+  <div class="controls">
+    <button id="findBtn" class="btn">Find Partner</button>
+    <button id="nextBtn" class="btn hidden">Next</button>
+    <button id="disconnectBtn" class="btn hidden">Disconnect</button>
+  </div>
 
-  <!-- App (Firebase RTDB signalling client) -->
-  <script src="/app.js"></script>
+  <script src="script.js"></script>
+
 </body>
 </html>
