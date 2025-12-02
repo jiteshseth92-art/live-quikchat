@@ -15,43 +15,54 @@ const io = new Server(server, {
   }
 });
 
-app.get("/", (req, res) => {
-  res.send("QuikChat Server Running Successfully!");
-});
-
-// Random match system
 let waitingUser = null;
 
 io.on("connection", (socket) => {
   console.log("User connected:", socket.id);
 
-  socket.on("find", () => {
-    if (waitingUser) {
-      io.to(waitingUser).emit("matched", socket.id);
-      io.to(socket.id).emit("matched", waitingUser);
-      waitingUser = null;
+  // Find Partner
+  socket.on("findPartner", () => {
+    if (!waitingUser) {
+      waitingUser = socket;
+      socket.emit("waiting", "Searching for partner…");
     } else {
-      waitingUser = socket.id;
+      const partner = waitingUser;
+      waitingUser = null;
+
+      socket.emit("match", { partnerID: partner.id });
+      partner.emit("match", { partnerID: socket.id });
+
+      console.log("Matched", partner.id, " & ", socket.id);
     }
   });
 
+  // WebRTC Signalling
   socket.on("offer", (data) => {
-    io.to(data.to).emit("offer", data.offer);
+    socket.to(data.partnerID).emit("offer", data.offer);
   });
 
   socket.on("answer", (data) => {
-    io.to(data.to).emit("answer", data.answer);
+    socket.to(data.partnerID).emit("answer", data.answer);
   });
 
-  socket.on("ice", (data) => {
-    io.to(data.to).emit("ice", data.ice);
+  socket.on("ice-candidate", (data) => {
+    socket.to(data.partnerID).emit("ice-candidate", data.candidate);
   });
 
   socket.on("disconnect", () => {
-    if (waitingUser === socket.id) waitingUser = null;
-    console.log("User disconnected:", socket.id);
+    console.log("Disconnected:", socket.id);
+    if (waitingUser && waitingUser.id === socket.id) {
+      waitingUser = null;
+    }
+    socket.broadcast.emit("partner-disconnected");
   });
 });
 
-const PORT = process.env.PORT || 10000;
-server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+app.get("/", (req, res) => {
+  res.send("QuikChat Live Server Running");
+});
+
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
