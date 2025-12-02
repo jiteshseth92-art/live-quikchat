@@ -1,59 +1,43 @@
-const express = require("express");
-const http = require("http");
-const { Server } = require("socket.io");
-const Livekit = require("livekit-server-sdk");
-require("dotenv").config();
+import express from "express";
+import http from "http";
+import { Server } from "socket.io";
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
-  cors: { origin: "*" }
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"]
+  }
 });
 
-// LiveKit credentials
-const livekitUrl = process.env.LIVEKIT_URL;
-const apiKey = process.env.LIVEKIT_API_KEY;
-const apiSecret = process.env.LIVEKIT_API_SECRET;
-
-let waitingUsers = [];
-
-app.use(express.static("public"));
+let waitingUser = null;
 
 io.on("connection", (socket) => {
-  console.log("User Joined:", socket.id);
+  console.log("User connected:", socket.id);
 
-  socket.on("find-partner", async () => {
-    waitingUsers.push(socket.id);
-    matchUsers();
+  socket.on("find", () => {
+    console.log("Find request by:", socket.id);
+
+    if (waitingUser && waitingUser !== socket.id) {
+      io.to(socket.id).emit("match", waitingUser);
+      io.to(waitingUser).emit("match", socket.id);
+      waitingUser = null;
+    } else {
+      waitingUser = socket.id;
+      io.to(socket.id).emit("waiting");
+    }
   });
 
-  socket.on("disconnect", () => {
-    waitingUsers = waitingUsers.filter(id => id !== socket.id);
-    console.log("User left:", socket.id);
+  socket.on("offer", (data) => {
+    io.to(data.target).emit("offer", {
+      sdp: data.sdp,
+      caller: socket.id
+    });
   });
-});
 
-async function matchUsers() {
-  if (waitingUsers.length >= 2) {
-    const user1 = waitingUsers.shift();
-    const user2 = waitingUsers.shift();
-
-    const roomName = `room-${user1}-${user2}`;
-
-    const token1 = new Livekit.AccessToken(apiKey, apiSecret, { identity: user1 })
-      .addGrant({ roomJoin: true, room: roomName })
-      .toJwt();
-
-    const token2 = new Livekit.AccessToken(apiKey, apiSecret, { identity: user2 })
-      .addGrant({ roomJoin: true, room: roomName })
-      .toJwt();
-
-    io.to(user1).emit("matched", { roomName, token: token1 });
-    io.to(user2).emit("matched", { roomName, token: token2 });
-
-    console.log("Matched users:", user1, user2);
-  }
-}
-
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log("Server Running on", PORT));
+  socket.on("answer", (data) => {
+    io.to(data.target).emit("answer", {
+      sdp: data.sdp
+    });
+  });
