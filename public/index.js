@@ -16,12 +16,9 @@ const config = {
   ]
 };
 
-// Get camera + mic access
+// Start camera + mic
 async function startMedia() {
-  localStream = await navigator.mediaDevices.getUserMedia({
-    video: true,
-    audio: true,
-  });
+  localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
   localVideo.srcObject = localStream;
 }
 
@@ -37,6 +34,7 @@ stopBtn.onclick = () => {
   endCall();
 };
 
+// Socket events
 socket.on("found", async () => {
   pc = createPeer();
   const offer = await pc.createOffer();
@@ -56,7 +54,7 @@ socket.on("answer", (answer) => {
   pc.setRemoteDescription(answer);
 });
 
-socket.on("candidate", (candidate) => {
+socket.on("iceCandidate", (candidate) => {
   pc.addIceCandidate(candidate);
 });
 
@@ -64,7 +62,7 @@ socket.on("leave", () => {
   endCall();
 });
 
-// Create PeerConnection
+// PeerConnection
 function createPeer() {
   const peer = new RTCPeerConnection(config);
 
@@ -74,7 +72,7 @@ function createPeer() {
 
   peer.onicecandidate = (e) => {
     if (e.candidate) {
-      socket.emit("candidate", e.candidate);
+      socket.emit("iceCandidate", e.candidate);
     }
   };
 
@@ -96,5 +94,5 @@ function endCall() {
   remoteVideo.srcObject = null;
 }
 
-// Auto start camera
+// Start camera
 startMedia();
