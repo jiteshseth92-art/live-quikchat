@@ -1,105 +1,23 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>QuikChat — Live</title>
-  <link rel="stylesheet" href="style.css" />
-</head>
-<body>
-  <div id="app">
-    <header>
-      <h1>QuikChat</h1>
-      <div id="statusTop">Ready</div>
-      <div class="tools">
-        <div>
-          <label>Gender</label>
-          <select id="genderSelect">
-            <option value="any">Any</option>
-            <option value="male">Male</option>
-            <option value="female">Female</option>
-          </select>
-        </div>
-        <div>
-          <label>Country</label>
-          <select id="countrySelect">
-            <option value="any">Any</option>
-            <option value="india">India</option>
-            <option value="pakistan">Pakistan</option>
-            <option value="bangladesh">Bangladesh</option>
-            <option value="nepal">Nepal</option>
-            <option value="usa">USA</option>
-            <option value="uk">UK</option>
-          </select>
-        </div>
-        <div>
-          <label>Name</label>
-          <input id="nameInput" type="text" placeholder="Your name (optional)" />
-        </div>
-        <div>
-          <label>Coins</label>
-          <span id="coinsVal">0</span>
-        </div>
-      </div>
-    </header>
+<title>QuikChat — Random 1:1 Video Chat</title>
+<meta name="description" content="QuikChat — Random 1:1 video chat. Meet people instantly, send images & stickers, private calls. No download required." />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<link rel="canonical" href="https://YOUR_DOMAIN_HERE/" />
 
-    <section class="video-wrap">
-      <div class="video-card">
-        <div class="label">Remote</div>
-        <div class="video-box">
-          <video id="remoteVideo" autoplay playsinline></video>
-          <img id="remoteSticker" class="sticker" hidden />
-        </div>
-      </div>
+<!-- Open Graph -->
+<meta property="og:type" content="website" />
+<meta property="og:title" content="QuikChat — Random 1:1 Video Chat" />
+<meta property="og:description" content="Meet people instantly — video, chat, stickers. No download required." />
+<meta property="og:url" content="https://YOUR_DOMAIN_HERE/" />
+<meta property="og:image" content="https://YOUR_DOMAIN_HERE/social-card.png" />
 
-      <div class="video-card">
-        <div class="label">You <span id="localName"></span></div>
-        <div class="video-box">
-          <video id="localVideo" autoplay muted playsinline></video>
-          <img id="localSticker" class="sticker" hidden />
-        </div>
-      </div>
-    </section>
+<!-- Twitter -->
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="QuikChat — Random 1:1 Video Chat" />
+<meta name="twitter:description" content="Meet people instantly — video, chat, stickers. No download required." />
+<meta name="twitter:image" content="https://YOUR_DOMAIN_HERE/social-card.png" />
 
-    <div class="controls">
-      <button id="findBtn" class="primary">Find</button>
-      <button id="nextBtn" disabled>Next</button>
-      <button id="disconnectBtn" disabled>End</button>
-
-      <div class="center-controls">
-        <button id="muteBtn">Mute</button>
-        <button id="videoBtn">Video Off</button>
-        <button id="switchCamBtn">Switch Cam</button>
-        <div id="timer">00:00</div>
-      </div>
-    </div>
-
-    <div class="extras">
-      <label class="file-label">
-        <input id="imageUpload" type="file" accept="image/*" hidden />
-        <button id="uploadBtn">Send Image</button>
-      </label>
-
-      <input id="stickerInput" type="file" accept="image/*" hidden />
-      <button id="stickerBtn">Send Sticker</button>
-      <button id="privateBtn">Private Call (100 coins)</button>
-    </div>
-
-    <div class="row" style="display:flex; gap:14px; justify-content:center; flex-wrap:wrap; margin-top:12px;">
-      <div class="chat">
-        <div id="chatBox"></div>
-        <div class="chat-controls">
-          <input id="chatInput" type="text" placeholder="Say hi..." />
-          <button id="sendChat">Send</button>
-        </div>
-      </div>
-    </div>
-
-    <div id="searchAnim" style="display:none">Searching…</div>
-  </div>
-
-  <script src="/socket.io/socket.io.js"></script>
-  <script>/* Optionally set SIGNALING_URL here if you want */</script>
-  <script src="script.js"></script>
-</body>
-</html>
+<!-- PWA manifest -->
+<link rel="manifest" href="/manifest.json" />
+<meta name="theme-color" content="#0066ff" />
+<!-- favicon (optional) -->
+<link rel="icon" href="/icons/icon-192.png" />
