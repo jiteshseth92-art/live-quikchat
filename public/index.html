@@ -1,1 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QuikChat - Random Video Chat</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
 
+    <div id="app">
+        <!-- Top Controls -->
+        <header class="top-bar">
+            <h1>QuikChat</h1>
+            <button id="findBtn" class="primary-btn">Find Partner</button>
+        </header>
+
+        <div class="main-content">
+            <!-- Video Section -->
+            <div class="video-section">
+                <video id="localVideo" autoplay playsinline muted></video>
+                <video id="remoteVideo" autoplay playsinline></video>
+
+                <div class="call-controls">
+                    <button id="nextBtn" class="control-btn">Next</button>
+                    <button id="muteBtn" class="control-btn">Mute</button>
+                    <button id="videoBtn" class="control-btn">Camera</button>
+                    <button id="disconnectBtn" class="end-btn">End</button>
+                </div>
+            </div>
+
+            <!-- Chat Panel Right Side -->
+            <aside class="chat-panel">
+                <div class="chat-header">Chat</div>
+                <div id="messages" class="messages"></div>
+
+                <div class="chat-input">
+                    <input type="text" id="msgInput" placeholder="Type a message...">
+                    <button id="sendBtn" class="send-btn">Send</button>
+                </div>
+            </aside>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
