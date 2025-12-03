@@ -1,722 +1,574 @@
-// Complete JavaScript code with all features
-// Due to length, I'm providing the structure and key functions
+// public/script.js (QuikChat - full client WebRTC + Socket logic)
+// Paste this file into public/script.js and reload your page.
 
-const APP_CONFIG = {
+(() => {
+  const CONFIG = {
+    ICE_SERVERS: [
+      { urls: "stun:stun.l.google.com:19302" },
+      { urls: "stun:stun1.l.google.com:19302" }
+      // For production add TURN servers here
+    ],
     COST_PER_MINUTE: 10,
-    FEMALE_FREE_PRIVATE: true,
     WARNING_TIME: 5,
-    MAX_FILE_SIZE: 15 * 1024 * 1024 // 15MB
-};
+    MAX_FILE_SIZE: 15 * 1024 * 1024
+  };
 
-class VideoChatApp {
-    constructor() {
-        this.initializeApp();
-    }
-    
-    initializeApp() {
-        this.setupSocket();
-        this.setupUI();
-        this.setupEventListeners();
-        this.initializeUser();
-        this.startServices();
-    }
-    
-    setupSocket() {
-        this.socket = io();
-        this.setupSocketEvents();
-    }
-    
-    setupSocketEvents() {
-        // All socket event handlers here
-        this.socket.on('connect', () => this.handleConnect());
-        this.socket.on('partnerFound', (data) => this.handlePartnerFound(data));
-        this.socket.on('offer', (data) => this.handleOffer(data));
-        this.socket.on('answer', (data) => this.handleAnswer(data));
-        this.socket.on('candidate', (data) => this.handleCandidate(data));
-        this.socket.on('chat', (data) => this.handleChat(data));
-        this.socket.on('file', (data) => this.handleFile(data));
-        this.socket.on('warning', (data) => this.handleWarning(data));
-        this.socket.on('privateRoomCreated', (data) => this.handlePrivateRoom(data));
-        this.socket.on('coinsUpdated', (data) => this.updateCoins(data));
-    }
-    
-    setupUI() {
-        // Initialize all UI elements
-        this.elements = {
-            coinsVal: document.getElementById('coinsVal'),
-            timer: document.getElementById('timer'),
-            chatBox: document.getElementById('chatBox'),
-            localVideo: document.getElementById('localVideo'),
-            remoteVideo: document.getElementById('remoteVideo'),
-            // ... all other elements
-        };
-        
-        this.state = {
-            coins: parseInt(localStorage.getItem('coins')) || 500,
-            isPremium: localStorage.getItem('premium') === 'true',
-            gender: localStorage.getItem('gender') || 'male',
-            country: 'ph',
-            isFemale: false,
-            inPrivateRoom: false,
-            partnerGender: null,
-            roomId: null,
-            timerInterval: null,
-            callDuration: 0,
-            privacyShieldActive: false
-        };
-    }
-    
-    initializeUser() {
-        // Set user data
-        const savedGender = localStorage.getItem('gender');
-        if (savedGender === 'female') {
-            this.state.isFemale = true;
-            this.showNotification('Female users get free private rooms!', 'success');
-        }
-        
-        // Check for fake gender
-        this.detectFakeGender();
-    }
-    
-    // FAKE GENDER DETECTION
-    detectFakeGender() {
-        // Simulate AI detection (in real app, use ML model)
-        const isFake = Math.random() < 0.1; // 10% chance of fake detection
-        
-        if (isFake && this.state.gender === 'female') {
-            this.showGenderWarning();
-            setTimeout(() => {
-                this.autoDisconnect();
-                this.showNotification('Fake gender detected! Account under review.', 'error');
-            }, 5000);
-        }
-    }
-    
-    showGenderWarning() {
-        const warning = document.getElementById('genderWarning');
-        warning.hidden = false;
-        
-        let seconds = 5;
-        const countdown = setInterval(() => {
-            warning.querySelector('span').textContent = 
-                `Fake gender detected! Auto-ban in ${seconds}s`;
-            seconds--;
-            
-            if (seconds < 0) {
-                clearInterval(countdown);
-                warning.hidden = true;
-            }
-        }, 1000);
-    }
-    
-    // PRIVATE ROOM SYSTEM
-    createPrivateRoom() {
-        if (this.state.isFemale && APP_CONFIG.FEMALE_FREE_PRIVATE) {
-            // Female users get free private rooms
-            this.startPrivateRoom();
-            return;
-        }
-        
-        const costPerMinute = APP_CONFIG.COST_PER_MINUTE;
-        const confirmMsg = `Private room costs ${costPerMinute} coins per minute.\n` +
-                          `You have ${this.state.coins} coins.\n` +
-                          'Proceed?';
-        
-        if (confirm(confirmMsg)) {
-            if (this.state.coins >= costPerMinute) {
-                this.startPrivateRoom();
-                this.startCoinDeduction();
-            } else {
-                this.showNotification('Not enough coins! Watch ads to earn more.', 'error');
-                this.showEarnCoinsModal();
-            }
-        }
-    }
-    
-    startPrivateRoom() {
-        this.state.inPrivateRoom = true;
-        this.activatePrivacyShield();
-        this.showNotification('Private room created! No recording allowed.', 'success');
-        
-        // Send private room request to server
-        this.socket.emit('createPrivateRoom', {
-            userId: this.socket.id,
-            gender: this.state.gender,
-            country: this.state.country
-        });
-    }
-    
-    activatePrivacyShield() {
-        const shield = document.getElementById('privacyShield');
-        shield.hidden = false;
-        
-        // Disable screenshots and recording
-        this.disableRecording();
-        
-        // Add privacy overlay to video
-        this.addPrivacyOverlay();
-    }
-    
-    disableRecording() {
-        // Prevent right-click save
-        document.addEventListener('contextmenu', (e) => e.preventDefault());
-        
-        // Prevent keyboard shortcuts for screenshots
-        document.addEventListener('keydown', (e) => {
-            if ((e.ctrlKey && e.key === 'p') || (e.key === 'PrintScreen')) {
-                e.preventDefault();
-                this.showNotification('Screenshots disabled in private room', 'warning');
-            }
-        });
-        
-        // Disable dev tools
-        this.disableDevTools();
-    }
-    
-    disableDevTools() {
-        // Basic dev tools protection
-        const noDevTools = () => {
-            if (window.outerWidth - window.innerWidth > 100 || 
-                window.outerHeight - window.innerHeight > 100) {
-                document.body.innerHTML = '<h1>Dev Tools Detected!</h1>';
-                return;
-            }
-        };
-        setInterval(noDevTools, 1000);
-    }
-    
-    addPrivacyOverlay() {
-        // Add invisible watermark to video
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        
-        // Draw watermark on remote video periodically
-        setInterval(() => {
-            if (this.elements.remoteVideo.srcObject) {
-                // This is a simplified version
-                // In real app, use WebGL shaders for video watermarking
-            }
-        }, 1000);
-    }
-    
-    // COIN DEDUCTION SYSTEM
-    startCoinDeduction() {
-        if (this.state.isFemale) return; // Females free
-        
-        this.coinDeductionInterval = setInterval(() => {
-            if (this.state.coins >= APP_CONFIG.COST_PER_MINUTE) {
-                this.state.coins -= APP_CONFIG.COST_PER_MINUTE;
-                this.updateCoinsDisplay();
-                
-                if (this.state.coins < APP_CONFIG.COST_PER_MINUTE) {
-                    this.showNotification(`Low coins! ${this.state.coins} remaining`, 'warning');
-                }
-            } else {
-                this.endPrivateRoom('Insufficient coins');
-            }
-        }, 60000); // Deduct every minute
-    }
-    
-    updateCoinsDisplay() {
-        this.elements.coinsVal.textContent = this.state.coins;
-        localStorage.setItem('coins', this.state.coins);
-        this.socket.emit('updateCoins', { coins: this.state.coins });
-    }
-    
-    // EARN COINS SYSTEM
-    setupEarnCoins() {
-        document.getElementById('watchAdBtn').addEventListener('click', () => {
-            this.showAdAndEarnCoins(10);
-        });
-        
-        document.getElementById('inviteBtn').addEventListener('click', () => {
-            this.showInviteModal();
-        });
-        
-        document.getElementById('shareBtn').addEventListener('click', () => {
-            this.shareApp();
-        });
-    }
-    
-    showAdAndEarnCoins(amount) {
-        // Simulate ad view
-        this.showAdModal().then(() => {
-            this.state.coins += amount;
-            this.updateCoinsDisplay();
-            this.showNotification(`+${amount} coins earned!`, 'success');
-        });
-    }
-    
-    showAdModal() {
-        return new Promise((resolve) => {
-            // Create ad modal
-            const modal = this.createModal('Watch Ad', `
-                <div class="ad-container">
-                    <div class="ad-content">
-                        <p>Watch this 30-second ad to earn ${amount} coins</p>
-                        <div class="ad-timer">30</div>
-                        <button class="btn-skip">Skip Ad</button>
-                    </div>
-                </div>
-            `);
-            
-            // Start timer
-            let time = 30;
-            const timer = setInterval(() => {
-                time--;
-                modal.querySelector('.ad-timer').textContent = time;
-                
-                if (time <= 0) {
-                    clearInterval(timer);
-                    modal.remove();
-                    resolve();
-                }
-            }, 1000);
-            
-            // Skip button
-            modal.querySelector('.btn-skip').addEventListener('click', () => {
-                clearInterval(timer);
-                modal.remove();
-                resolve();
-            });
-        });
-    }
-    
-    // NUDITY DETECTION SYSTEM
-    setupNudityDetection() {
-        // Monitor video streams for inappropriate content
-        this.videoMonitorInterval = setInterval(() => {
-            this.monitorVideoContent();
-        }, 5000);
-    }
-    
-    monitorVideoContent() {
-        if (!this.state.inPrivateRoom) {
-            // Check for nudity in public chat
-            this.checkForNudity().then((hasNudity) => {
-                if (hasNudity) {
-                    this.showNudityWarning();
-                    setTimeout(() => {
-                        this.autoDisconnect();
-                        this.socket.emit('reportUser', {
-                            reason: 'nudity',
-                            roomId: this.state.roomId
-                        });
-                    }, 5000);
-                }
-            });
-        }
-    }
-    
-    showNudityWarning() {
-        const warning = document.getElementById('nudityWarning');
-        warning.hidden = false;
-        
-        let seconds = 5;
-        const timerEl = document.getElementById('warningTimer');
-        
-        const countdown = setInterval(() => {
-            timerEl.textContent = seconds;
-            seconds--;
-            
-            if (seconds < 0) {
-                clearInterval(countdown);
-                warning.hidden = true;
-            }
-        }, 1000);
-        
-        this.showNotification('Inappropriate content detected! Use private room.', 'error');
-    }
-    
-    // TIMER SYSTEM
-    startTimer() {
-        this.stopTimer();
-        
-        this.state.callDuration = 0;
-        this.updateTimerDisplay();
-        
-        this.state.timerInterval = setInterval(() => {
-            this.state.callDuration++;
-            this.updateTimerDisplay();
-            
-            // Auto-end after 30 minutes (safety)
-            if (this.state.callDuration >= 1800) {
-                this.autoDisconnect('Maximum call time reached (30 minutes)');
-            }
-        }, 1000);
-    }
-    
-    updateTimerDisplay() {
-        const minutes = Math.floor(this.state.callDuration / 60);
-        const seconds = this.state.callDuration % 60;
-        this.elements.timer.textContent = 
-            `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-    }
-    
-    stopTimer() {
-        if (this.state.timerInterval) {
-            clearInterval(this.state.timerInterval);
-            this.state.timerInterval = null;
-        }
-    }
-    
-    // FILE SHARING
-    setupFileSharing() {
-        document.getElementById('imageBtn').addEventListener('click', () => {
-            this.shareFile('image');
-        });
-        
-        document.getElementById('audioBtn').addEventListener('click', () => {
-            this.shareFile('audio');
-        });
-        
-        document.getElementById('stickerBtn').addEventListener('click', () => {
-            this.shareFile('sticker');
-        });
-    }
-    
-    shareFile(type) {
-        const input = document.createElement('input');
-        input.type = 'file';
-        input.accept = type === 'audio' ? 'audio/*' : 'image/*';
-        
-        input.onchange = (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
-            
-            if (file.size > APP_CONFIG.MAX_FILE_SIZE) {
-                this.showNotification('File too large (max 15MB)', 'error');
-                return;
-            }
-            
-            this.processAndSendFile(file, type);
-        };
-        
-        input.click();
-    }
-    
-    processAndSendFile(file, type) {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            const fileData = {
-                type: type,
-                data: e.target.result,
-                name: file.name,
-                size: file.size,
-                timestamp: Date.now()
-            };
-            
-            // Send via socket
-            this.socket.emit('sendFile', fileData);
-            
-            // Show in local chat
-            this.displayFile(fileData, true);
-            
-            // Update chat
-            this.addChatMessage(`Sent ${type}: ${file.name}`, 'you');
-        };
-        
-        reader.readAsDataURL(file);
-    }
-    
-    // PREMIUM SYSTEM
-    setupPremiumSystem() {
-        document.getElementById('upgradeBtn').addEventListener('click', () => {
-            this.showPremiumModal();
-        });
-        
-        // Check if user is premium
-        if (this.state.isPremium) {
-            this.showPremiumFeatures();
-        }
-    }
-    
-    showPremiumModal() {
-        const modal = this.createModal('Upgrade to Premium', `
-            <div class="premium-options">
-                <div class="premium-option" data-plan="1">
-                    <h4>1 Month</h4>
-                    <div class="price">$9.99</div>
-                    <ul>
-                        <li>Free Private Rooms</li>
-                        <li>No Ads</li>
-                        <li>Priority Matching</li>
-                    </ul>
-                    <button class="btn-buy" data-plan="1">Buy Now</button>
-                </div>
-                <div class="premium-option featured" data-plan="2">
-                    <h4>2 Months</h4>
-                    <div class="price">$15.99</div>
-                    <ul>
-                        <li>All 1 Month Features</li>
-                        <li>1000 Bonus Coins</li>
-                        <li>Female Priority</li>
-                    </ul>
-                    <button class="btn-buy" data-plan="2">Best Value</button>
-                </div>
-            </div>
-        `);
-        
-        modal.querySelectorAll('.btn-buy').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                const plan = e.target.dataset.plan;
-                this.processPremiumPurchase(plan);
-                modal.remove();
-            });
-        });
-    }
-    
-    processPremiumPurchase(plan) {
-        // In real app, integrate with payment gateway
-        this.showNotification('Redirecting to payment...', 'info');
-        
-        // Simulate payment success
-        setTimeout(() => {
-            this.state.isPremium = true;
-            localStorage.setItem('premium', 'true');
-            this.showPremiumFeatures();
-            this.showNotification('Premium activated! Enjoy free private rooms.', 'success');
-        }, 2000);
-    }
-    
-    showPremiumFeatures() {
-        document.getElementById('premiumBadge').innerHTML = 
-            '<i class="fas fa-crown"></i> Premium Member';
-        
-        // Enable premium features
-        document.getElementById('privateRoomBtn').innerHTML = 
-            '<i class="fas fa-lock"></i> <span>Private Room (FREE)</span>';
-    }
-    
-    // UTILITY FUNCTIONS
-    showNotification(message, type = 'info') {
-        const notification = document.createElement('div');
-        notification.className = `notification notification-${type}`;
-        notification.innerHTML = `
-            <i class="fas fa-${this.getIconForType(type)}"></i>
-            <span>${message}</span>
-        `;
-        
-        document.body.appendChild(notification);
-        
-        setTimeout(() => {
-            notification.style.animation = 'slideOutRight 0.3s ease-in forwards';
-            setTimeout(() => notification.remove(), 300);
-        }, 3000);
-    }
-    
-    getIconForType(type) {
-        const icons = {
-            success: 'check-circle',
-            error: 'exclamation-circle',
-            warning: 'exclamation-triangle',
-            info: 'info-circle'
-        };
-        return icons[type] || 'info-circle';
-    }
-    
-    addChatMessage(text, sender = 'system') {
-        const messageDiv = document.createElement('div');
-        messageDiv.className = `message ${sender}`;
-        
-        const time = new Date().toLocaleTimeString([], { 
-            hour: '2-digit', 
-            minute: '2-digit' 
-        });
-        
-        messageDiv.innerHTML = `
-            <div class="message-text">${text}</div>
-            <div class="message-time">${time}</div>
-        `;
-        
-        this.elements.chatBox.appendChild(messageDiv);
-        this.elements.chatBox.scrollTop = this.elements.chatBox.scrollHeight;
-    }
-    
-    createModal(title, content) {
-        const modal = document.createElement('div');
-        modal.className = 'modal-overlay';
-        modal.innerHTML = `
-            <div class="modal-content">
-                <h3>${title}</h3>
-                ${content}
-                <button class="modal-btn close">Close</button>
-            </div>
-        `;
-        
-        document.body.appendChild(modal);
-        
-        modal.querySelector('.close').addEventListener('click', () => {
-            modal.remove();
-        });
-        
-        modal.addEventListener('click', (e) => {
-            if (e.target === modal) {
-                modal.remove();
-            }
-        });
-        
-        return modal;
-    }
-    
-    // Main event handlers
-    handlePartnerFound(data) {
-        // Update partner info
-        document.getElementById('remoteName').textContent = 
-            data.partnerName || 'Anonymous';
-        
-        // Start timer if connected
-        if (data.connected) {
-            this.startTimer();
-        }
-        
-        // Update status
-        document.getElementById('remoteStatus').innerHTML = 
-            '<span class="status-dot active"></span> Connected';
-    }
-    
-    handleChat(data) {
-        this.addChatMessage(data.text, 'partner');
-    }
-    
-    handleFile(data) {
-        this.displayFile(data, false);
-        this.addChatMessage(`Sent ${data.type}: ${data.name}`, 'partner');
-    }
-    
-    displayFile(data, isLocal = false) {
-        const container = document.createElement('div');
-        container.className = 'file-message';
-        
-        if (data.type === 'image') {
-            container.innerHTML = `
-                <img src="${data.data}" alt="${data.name}" 
-                     onclick="app.zoomImage('${data.data}')">
-                <div class="file-info">
-                    <span>${data.name}</span>
-                    <button onclick="app.downloadFile('${data.data}', '${data.name}')">
-                        <i class="fas fa-download"></i>
-                    </button>
-                </div>
-            `;
-        } else if (data.type === 'audio') {
-            container.innerHTML = `
-                <audio controls src="${data.data}"></audio>
-                <div class="file-info">
-                    <span>${data.name}</span>
-                    <button onclick="app.downloadFile('${data.data}', '${data.name}')">
-                        <i class="fas fa-download"></i>
-                    </button>
-                </div>
-            `;
-        }
-        
-        container.classList.add(isLocal ? 'local' : 'partner');
-        this.elements.chatBox.appendChild(container);
-        this.elements.chatBox.scrollTop = this.elements.chatBox.scrollHeight;
-    }
-    
-    zoomImage(src) {
-        const modal = document.getElementById('zoomModal');
-        const img = document.getElementById('zoomImg');
-        
-        img.src = src;
-        modal.hidden = false;
-        
-        document.getElementById('downloadBtn').onclick = () => {
-            this.downloadFile(src, 'image.png');
-        };
-        
-        document.getElementById('closeZoomBtn').onclick = () => {
-            modal.hidden = true;
-        };
-    }
-    
-    downloadFile(dataUrl, filename) {
-        const link = document.createElement('a');
-        link.href = dataUrl;
-        link.download = filename;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        
-        this.showNotification('File downloaded', 'success');
-    }
-    
-    autoDisconnect(reason = 'Safety violation') {
-        this.stopTimer();
-        this.showNotification(`Disconnected: ${reason}`, 'error');
-        
-        // Clean up
-        if (this.state.roomId) {
-            this.socket.emit('leaveRoom', { roomId: this.state.roomId });
-            this.state.roomId = null;
-        }
-        
-        // Reset UI
-        this.resetUI();
-    }
-    
-    resetUI() {
-        this.elements.remoteVideo.srcObject = null;
-        document.getElementById('remoteName').textContent = 'Waiting for partner...';
-        document.getElementById('remoteStatus').innerHTML = 
-            '<span class="status-dot"></span> Offline';
-        
-        // Hide privacy shield
-        document.getElementById('privacyShield').hidden = true;
-        
-        // Enable find button
-        document.getElementById('findBtn').disabled = false;
-        document.getElementById('nextBtn').disabled = true;
-        document.getElementById('disconnectBtn').disabled = true;
-    }
-    
-    // Start all services
-    startServices() {
-        this.setupEarnCoins();
-        this.setupFileSharing();
-        this.setupPremiumSystem();
-        this.setupNudityDetection();
-    }
-}
+  // --- UI elements ---
+  const elems = {
+    // header / branding
+    logoTitle: document.querySelector('.logo h1'),
+    coinsVal: document.getElementById('coinsVal'),
+    premiumBadge: document.getElementById('premiumBadge'),
 
-// Initialize app when page loads
-window.addEventListener('DOMContentLoaded', () => {
-    window.app = new VideoChatApp();
-});
+    // video
+    localVideo: document.getElementById('localVideo'),
+    remoteVideo: document.getElementById('remoteVideo'),
+    localName: document.getElementById('localName'),
+    remoteName: document.getElementById('remoteName'),
+    remoteStatus: document.getElementById('remoteStatus'),
+    privacyShield: document.getElementById('privacyShield'),
 
-// Public chat clearing function
-function clearPublicChat() {
-    const chatBox = document.getElementById('chatBox');
-    const systemMessage = chatBox.querySelector('.system-message');
-    chatBox.innerHTML = '';
-    if (systemMessage) {
-        chatBox.appendChild(systemMessage);
-    }
-    window.app.showNotification('Chat cleared', 'info');
-}
+    // controls
+    findBtn: document.getElementById('findBtn'),
+    privateRoomBtn: document.getElementById('privateRoomBtn'),
+    nextBtn: document.getElementById('nextBtn'),
+    disconnectBtn: document.getElementById('disconnectBtn'),
+    switchCamBtn: document.getElementById('switchCamBtn'),
+    muteBtn: document.getElementById('muteBtn'),
+    videoBtn: document.getElementById('videoBtn'),
+    timer: document.getElementById('timer'),
+    searchAnim: document.getElementById('searchAnim'),
+    searchCountry: document.getElementById('searchCountry'),
 
-// Gender change handler
-document.querySelectorAll('.gender-btn').forEach(btn => {
-    btn.addEventListener('click', function() {
-        document.querySelectorAll('.gender-btn').forEach(b => b.classList.remove('active'));
-        this.classList.add('active');
-        
-        const gender = this.dataset.gender;
-        localStorage.setItem('gender', gender);
-        window.app.state.gender = gender;
-        window.app.state.isFemale = (gender === 'female');
-        
-        if (gender === 'female') {
-            window.app.showNotification('Female users get free private rooms!', 'success');
-        }
+    // chat
+    chatBox: document.getElementById('chatBox'),
+    chatInput: document.getElementById('chatInput'),
+    sendChatBtn: document.getElementById('sendChatBtn'),
+
+    // file
+    imageBtn: document.getElementById('imageBtn'),
+    audioBtn: document.getElementById('audioBtn'),
+    stickerBtn: document.getElementById('stickerBtn'),
+
+    // warnings/modals
+    nudityWarning: document.getElementById('nudityWarning'),
+    warningTimer: document.getElementById('warningTimer'),
+    zoomModal: document.getElementById('zoomModal'),
+    zoomImg: document.getElementById('zoomImg'),
+    downloadBtn: document.getElementById('downloadBtn'),
+    closeZoomBtn: document.getElementById('closeZoomBtn'),
+
+    // selectors
+    countrySelect: document.getElementById('countrySelect'),
+    genderBtns: document.querySelectorAll('.gender-btn')
+  };
+
+  // Branding: change DeepSeek -> QuikChat
+  if (elems.logoTitle) {
+    elems.logoTitle.innerHTML = 'QuikChat<span>»</span>';
+    document.title = 'QuikChat - Anonymous 1on1 Video Chat';
+  }
+
+  // --- State ---
+  const state = {
+    socket: null,
+    localStream: null,
+    peerConnection: null,
+    isMuted: false,
+    camOff: false,
+    usingFrontCamera: true,
+    partnerId: null,
+    roomId: null,
+    inPrivateRoom: false,
+    coins: parseInt(localStorage.getItem('coins')) || 500,
+    isPremium: localStorage.getItem('premium') === 'true',
+    callTimer: null,
+    callSeconds: 0,
+    currentOfferPending: false
+  };
+
+  // update coins UI
+  function updateCoinsUI() {
+    elems.coinsVal.textContent = state.coins;
+    localStorage.setItem('coins', state.coins);
+  }
+  updateCoinsUI();
+
+  // --- Socket setup ---
+  function setupSocket() {
+    // force websocket transport for stability
+    state.socket = io({ transports: ['websocket'] });
+
+    state.socket.on('connect', () => {
+      console.log('socket connected', state.socket.id);
+      showNotification('Connected to QuikChat server', 'success');
     });
-});
 
-// Country selection
-document.getElementById('countrySelect').addEventListener('change', function() {
-    window.app.state.country = this.value;
-    const countryName = this.options[this.selectedIndex].text;
-    document.getElementById('searchCountry').textContent = countryName.split(' ')[1] || countryName;
-});
+    state.socket.on('disconnect', (reason) => {
+      console.log('socket disconnected', reason);
+      showNotification('Disconnected from server', 'error');
+    });
+
+    // partner matched
+    state.socket.on('partnerFound', (data) => {
+      console.log('partnerFound', data);
+      onPartnerFound(data);
+    });
+
+    // generic signal fallback
+    state.socket.on('signal', ({ from, data }) => {
+      console.log('signal from', from, data);
+      if (data.type === 'offer') handleRemoteOffer({ from, sdp: data.sdp });
+      if (data.type === 'answer') handleRemoteAnswer({ from, sdp: data.sdp });
+      if (data.type === 'candidate') handleRemoteCandidate({ from, candidate: data.candidate });
+    });
+
+    // explicit events for compatibility
+    state.socket.on('offer', ({ from, offer }) => handleRemoteOffer({ from, sdp: offer }));
+    state.socket.on('answer', ({ from, answer }) => handleRemoteAnswer({ from, sdp: answer }));
+    state.socket.on('candidate', ({ from, candidate }) => handleRemoteCandidate({ from, candidate }));
+
+    state.socket.on('privateRoomCreated', ({ roomId }) => {
+      console.log('privateRoomCreated', roomId);
+      state.inPrivateRoom = true;
+      state.roomId = roomId;
+      elems.privacyShield.hidden = false;
+      showNotification('Private room created', 'success');
+    });
+
+    state.socket.on('privateRoomJoined', (data) => {
+      console.log('privateRoomJoined', data);
+    });
+
+    state.socket.on('coinsUpdated', ({ coins }) => {
+      state.coins = coins;
+      updateCoinsUI();
+    });
+
+    state.socket.on('waiting', () => {
+      console.log('server says waiting');
+      showSearching(true);
+    });
+
+    state.socket.on('findNewPartner', () => {
+      startFind();
+    });
+
+    state.socket.on('partnerDisconnected', (info) => {
+      console.log('partnerDisconnected', info);
+      showNotification('Partner disconnected', 'warning');
+      cleanupAfterCall();
+    });
+
+    // file / chat events
+    state.socket.on('file', (data) => {
+      displayFile(data, false);
+      addChatMessage(`Received ${data.type}: ${data.name}`, 'partner');
+    });
+
+    // ban/report events
+    state.socket.on('banned', ({ reason }) => {
+      showNotification(`Banned: ${reason}`, 'error');
+      // disconnect UI
+      cleanupAfterCall();
+    });
+  }
+
+  // --- UI helpers ---
+  function showSearching(on) {
+    elems.searchAnim.hidden = !on;
+    elems.findBtn.disabled = on;
+    elems.nextBtn.disabled = !on;
+  }
+
+  function enableCallButtons(enabled) {
+    elems.disconnectBtn.disabled = !enabled;
+    elems.nextBtn.disabled = !enabled;
+    elems.privateRoomBtn.disabled = enabled; // don't create private while in call
+  }
+
+  function addChatMessage(text, sender = 'system') {
+    const div = document.createElement('div');
+    div.className = `message ${sender}`;
+    const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    div.innerHTML = `<div class="message-text">${text}</div><div class="message-time">${time}</div>`;
+    elems.chatBox.appendChild(div);
+    elems.chatBox.scrollTop = elems.chatBox.scrollHeight;
+  }
+
+  function showNotification(msg, type = 'info') {
+    // simple in-page toast
+    const n = document.createElement('div');
+    n.className = `notification notification-${type}`;
+    n.innerHTML = `<i class="fas fa-info-circle"></i><span>${msg}</span>`;
+    document.body.appendChild(n);
+    setTimeout(() => {
+      n.style.animation = 'slideOutRight 0.3s ease-in forwards';
+      setTimeout(() => n.remove(), 300);
+    }, 2500);
+  }
+
+  // --- Media (getUserMedia) ---
+  async function ensureLocalStream() {
+    if (state.localStream) return state.localStream;
+    try {
+      const constraints = {
+        video: { facingMode: state.usingFrontCamera ? 'user' : 'environment' },
+        audio: true
+      };
+      state.localStream = await navigator.mediaDevices.getUserMedia(constraints);
+      elems.localVideo.srcObject = state.localStream;
+      console.log('Got local stream');
+      return state.localStream;
+    } catch (err) {
+      console.error('getUserMedia error', err);
+      alert('Camera/Microphone access required. Use Chrome and allow permissions.');
+      throw err;
+    }
+  }
+
+  async function stopLocalStreamTracks() {
+    if (!state.localStream) return;
+    state.localStream.getTracks().forEach(t => t.stop());
+    state.localStream = null;
+    elems.localVideo.srcObject = null;
+  }
+
+  // --- PeerConnection lifecycle ---
+  function createPeerConnection(partnerId) {
+    const pc = new RTCPeerConnection({ iceServers: CONFIG.ICE_SERVERS });
+
+    // send local ICE to partner via server
+    pc.onicecandidate = (evt) => {
+      if (evt.candidate) {
+        console.log('Local ICE', evt.candidate);
+        // prefer explicit event
+        state.socket.emit('candidate', { candidate: evt.candidate, to: partnerId });
+        // fallback generic:
+        state.socket.emit('signal', { to: partnerId, data: { type: 'candidate', candidate: evt.candidate } });
+      }
+    };
+
+    // when remote track arrives
+    pc.ontrack = (evt) => {
+      console.log('Remote track received');
+      // combine streams on remoteVideo (some browsers send multiple)
+      elems.remoteVideo.srcObject = evt.streams[0] || evt.stream;
+    };
+
+    // connection state
+    pc.onconnectionstatechange = () => {
+      console.log('PC state', pc.connectionState);
+      if (pc.connectionState === 'connected') {
+        enableCallButtons(true);
+        startTimer();
+        elems.remoteStatus.innerHTML = '<span class="status-dot active"></span> Connected';
+      } else if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed') {
+        cleanupAfterCall();
+      }
+    };
+
+    return pc;
+  }
+
+  async function startCallAsCaller(partnerId) {
+    try {
+      await ensureLocalStream();
+      state.peerConnection = createPeerConnection(partnerId);
+
+      // add local tracks
+      state.localStream.getTracks().forEach(track => state.peerConnection.addTrack(track, state.localStream));
+
+      const offer = await state.peerConnection.createOffer();
+      await state.peerConnection.setLocalDescription(offer);
+
+      // send offer via server
+      state.socket.emit('offer', { offer: offer.sdp || offer, to: partnerId });
+      // fallback generic signal
+      state.socket.emit('signal', { to: partnerId, data: { type: 'offer', sdp: offer.sdp || offer } });
+
+      console.log('Offer sent to', partnerId);
+    } catch (err) {
+      console.error('startCallAsCaller err', err);
+      showNotification('Failed to start call: ' + err.message, 'error');
+      cleanupAfterCall();
+    }
+  }
+
+  async function handleRemoteOffer({ from, sdp }) {
+    console.log('Remote offer from', from);
+    state.partnerId = from;
+    try {
+      await ensureLocalStream();
+      state.peerConnection = createPeerConnection(from);
+      // add local tracks before setRemoteDescription in some browsers improves behavior
+      state.localStream.getTracks().forEach(track => state.peerConnection.addTrack(track, state.localStream));
+
+      const remoteDesc = { type: 'offer', sdp: sdp };
+      await state.peerConnection.setRemoteDescription(new RTCSessionDescription(remoteDesc));
+
+      const answer = await state.peerConnection.createAnswer();
+      await state.peerConnection.setLocalDescription(answer);
+
+      // send answer
+      state.socket.emit('answer', { answer: answer.sdp || answer, to: from });
+      state.socket.emit('signal', { to: from, data: { type: 'answer', sdp: answer.sdp || answer } });
+
+      console.log('Answer sent to', from);
+    } catch (err) {
+      console.error('handleRemoteOffer err', err);
+    }
+  }
+
+  async function handleRemoteAnswer({ from, sdp }) {
+    console.log('Remote answer from', from);
+    if (!state.peerConnection) return;
+    try {
+      const remoteDesc = { type: 'answer', sdp: sdp };
+      await state.peerConnection.setRemoteDescription(new RTCSessionDescription(remoteDesc));
+    } catch (err) {
+      console.error('handleRemoteAnswer err', err);
+    }
+  }
+
+  async function handleRemoteCandidate({ from, candidate }) {
+    console.log('Remote candidate from', from);
+    try {
+      if (!candidate) return;
+      await state.peerConnection?.addIceCandidate(new RTCIceCandidate(candidate));
+    } catch (err) {
+      console.error('addIceCandidate error', err);
+    }
+  }
+
+  // --- Call controls ---
+  async function onPartnerFound(data) {
+    // server emitted partnerFound; data contains partnerId, roomId, isPrivate
+    console.log('onPartnerFound', data);
+    showSearching(false);
+    state.partnerId = data.partnerId;
+    state.roomId = data.roomId || null;
+    state.inPrivateRoom = !!data.isPrivate;
+    elems.remoteName.textContent = data.partnerName || 'Anonymous';
+    elems.remoteStatus.innerHTML = '<span class="status-dot"></span> Connecting...';
+
+    // pick a deterministic caller to avoid both sending offers simultaneously:
+    // simplest rule: socket id string compare
+    const amCaller = state.socket.id < state.partnerId;
+    if (amCaller) {
+      await startCallAsCaller(state.partnerId);
+    } else {
+      // wait for remote offer; nothing to do but ensure local stream ready
+      try { await ensureLocalStream(); } catch(e){ console.warn('no local stream'); }
+    }
+
+    // enable disconnect button
+    elems.disconnectBtn.disabled = false;
+    elems.nextBtn.disabled = false;
+  }
+
+  async function cleanupAfterCall() {
+    // stop timer and UI
+    stopTimer();
+    // close peer
+    try { state.peerConnection?.close(); } catch(e){}
+    state.peerConnection = null;
+
+    // remove remote video
+    elems.remoteVideo.srcObject = null;
+    elems.remoteStatus.innerHTML = '<span class="status-dot"></span> Offline';
+    elems.remoteName.textContent = 'Waiting for partner...';
+
+    // stop local tracks? keep camera for faster reconnect
+    // stopLocalStreamTracks();
+
+    // reset call state
+    state.partnerId = null;
+    state.roomId = null;
+    state.inPrivateRoom = false;
+    elems.privacyShield.hidden = true;
+
+    enableCallButtons(false);
+    elems.findBtn.disabled = false;
+    showNotification('Call ended', 'info');
+  }
+
+  // --- Timer for call duration ---
+  function startTimer() {
+    stopTimer();
+    state.callSeconds = 0;
+    elems.timer.textContent = '00:00';
+    state.callTimer = setInterval(() => {
+      state.callSeconds += 1;
+      const m = Math.floor(state.callSeconds / 60).toString().padStart(2,'0');
+      const s = (state.callSeconds % 60).toString().padStart(2,'0');
+      elems.timer.textContent = `${m}:${s}`;
+    }, 1000);
+  }
+  function stopTimer() {
+    if (state.callTimer) { clearInterval(state.callTimer); state.callTimer = null; }
+  }
+
+  // --- Buttons handlers ---
+  elems.findBtn.addEventListener('click', startFind);
+  elems.nextBtn.addEventListener('click', () => {
+    state.socket.emit('next');
+    cleanupAfterCall();
+    startFind();
+  });
+  elems.disconnectBtn.addEventListener('click', () => {
+    state.socket.emit('leaveRoom');
+    cleanupAfterCall();
+  });
+
+  elems.privateRoomBtn.addEventListener('click', () => {
+    // create private room: server will deduct coins directly in our server logic
+    state.socket.emit('createPrivateRoom', { gender: localStorage.getItem('gender') || 'male', country: elems.countrySelect.value });
+  });
+
+  elems.switchCamBtn.addEventListener('click', async () => {
+    state.usingFrontCamera = !state.usingFrontCamera;
+    // restart local stream with opposite facing mode
+    try {
+      await stopLocalStreamTracks();
+      await ensureLocalStream();
+      // re-add tracks to peer (if exists)
+      if (state.peerConnection && state.localStream) {
+        // replace senders
+        const senders = state.peerConnection.getSenders();
+        const videoTrack = state.localStream.getVideoTracks()[0];
+        for (const s of senders) if (s.track && s.track.kind === 'video') {
+          try { await s.replaceTrack(videoTrack); } catch(e){ s.track = videoTrack; }
+        }
+      }
+    } catch (err) { console.error('switch cam failed', err); }
+  });
+
+  elems.muteBtn.addEventListener('click', () => {
+    if (!state.localStream) return;
+    state.isMuted = !state.isMuted;
+    state.localStream.getAudioTracks().forEach(t => t.enabled = !state.isMuted);
+    elems.muteBtn.innerHTML = state.isMuted ? '<i class="fas fa-microphone-slash"></i>' : '<i class="fas fa-microphone"></i>';
+  });
+
+  elems.videoBtn.addEventListener('click', () => {
+    if (!state.localStream) return;
+    state.camOff = !state.camOff;
+    state.localStream.getVideoTracks().forEach(t => t.enabled = !state.camOff);
+    elems.videoBtn.innerHTML = state.camOff ? '<i class="fas fa-video-slash"></i>' : '<i class="fas fa-video"></i>';
+  });
+
+  // Chat send
+  elems.sendChatBtn.addEventListener('click', () => {
+    const text = elems.chatInput.value.trim();
+    if (!text || !state.socket) return;
+    // send via server side room broadcast - simple approach: emit to server to forward as chat file
+    // For now add local
+    addChatMessage(text, 'you');
+    state.socket.emit('chat', { text, roomId: state.roomId });
+    elems.chatInput.value = '';
+  });
+
+  // File share
+  elems.imageBtn.addEventListener('click', () => pickAndSendFile('image'));
+  elems.audioBtn.addEventListener('click', () => pickAndSendFile('audio'));
+  elems.stickerBtn.addEventListener('click', () => pickAndSendFile('sticker'));
+
+  function pickAndSendFile(type) {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = type === 'audio' ? 'audio/*' : 'image/*';
+    input.onchange = e => {
+      const f = e.target.files[0];
+      if (!f) return;
+      if (f.size > CONFIG.MAX_FILE_SIZE) { showNotification('File too large', 'error'); return; }
+      const reader = new FileReader();
+      reader.onload = () => {
+        const payload = { type, name: f.name, data: reader.result, size: f.size, timestamp: Date.now() };
+        state.socket.emit('sendFile', payload);
+        displayFile(payload, true);
+      };
+      reader.readAsDataURL(f);
+    };
+    input.click();
+  }
+
+  function displayFile(data, isLocal) {
+    const container = document.createElement('div');
+    container.className = 'file-message ' + (isLocal ? 'local' : 'partner');
+    if (data.type === 'image') {
+      container.innerHTML = `<img src="${data.data}" style="max-width:100%;border-radius:8px">`;
+    } else if (data.type === 'audio') {
+      container.innerHTML = `<audio controls src="${data.data}"></audio>`;
+    }
+    elems.chatBox.appendChild(container);
+    elems.chatBox.scrollTop = elems.chatBox.scrollHeight;
+  }
+
+  // --- Start find workflow ---
+  async function startFind() {
+    // send preferences
+    const payload = {
+      gender: localStorage.getItem('gender') || 'male',
+      country: elems.countrySelect.value || 'ph',
+      wantPrivate: false
+    };
+    showSearching(true);
+    addChatMessage('Searching for a partner...', 'system');
+    state.socket.emit('findPartner', payload);
+  }
+
+  // --- Remote signaling handlers ---
+  function handleInboundOfferFromSignal(data) {
+    if (data.type === 'offer') handleRemoteOffer({ from: data.from, sdp: data.sdp });
+    if (data.type === 'answer') handleRemoteAnswer({ from: data.from, sdp: data.sdp });
+    if (data.type === 'candidate') handleRemoteCandidate({ from: data.from, candidate: data.candidate });
+  }
+
+  // Provide compatibility listeners if server sends custom chat
+  if (!state.socket) setupSocket();
+
+  // Ensure gender buttons save
+  elems.genderBtns.forEach(btn => btn.addEventListener('click', () => {
+    elems.genderBtns.forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const g = btn.dataset.gender;
+    localStorage.setItem('gender', g);
+    if (g === 'female') showNotification('Female users: private rooms free', 'success');
+  }));
+
+  // Country change updates display
+  if (elems.countrySelect) elems.countrySelect.addEventListener('change', () => {
+    document.getElementById('searchCountry').textContent = elems.countrySelect.options[elems.countrySelect.selectedIndex].text;
+  });
+
+  // Helper for zoom modal
+  if (elems.closeZoomBtn) elems.closeZoomBtn.addEventListener('click', () => { elems.zoomModal.hidden = true; });
+  if (elems.downloadBtn) elems.downloadBtn.addEventListener('click', () => {
+    const src = elems.zoomImg.src;
+    if (!src) return;
+    const link = document.createElement('a'); link.href = src; link.download = 'image.png'; link.click();
+  });
+
+  // Expose some functions for console debugging
+  window.QuikChat = {
+    state,
+    startFind,
+    cleanupAfterCall,
+    ensureLocalStream
+  };
+
+  // Immediately initialize socket (if not already)
+  if (!state.socket) setupSocket();
+
+  // Auto request camera when user clicks find (improves permission UX)
+  elems.findBtn.addEventListener('click', async () => {
+    try {
+      await ensureLocalStream();
+    } catch (err) { /* permission alert shown in ensureLocalStream */ }
+  });
+
+  // Debug: show connection logs in console
+  console.log('QuikChat client initialized');
+
+})();
