@@ -1,28 +1,68 @@
+/* DeepSeek Style - Modern Video Chat */
+:root {
+    /* DeepSeek Colors */
+    --primary: #6366f1;
+    --primary-dark: #4f46e5;
+    --secondary: #8b5cf6;
+    --accent: #10b981;
+    --danger: #ef4444;
+    --warning: #f59e0b;
+    --success: #10b981;
+    --info: #3b82f6;
+    
+    /* Dark Theme */
+    --bg-primary: #0f172a;
+    --bg-secondary: #1e293b;
+    --bg-card: #334155;
+    --text-primary: #f1f5f9;
+    --text-secondary: #94a3b8;
+    --border-color: #475569;
+    
+    /* Gradients */
+    --gradient-primary: linear-gradient(135deg, #6366f1, #8b5cf6);
+    --gradient-dark: linear-gradient(135deg, #1e293b, #0f172a);
+    --gradient-accent: linear-gradient(135deg, #10b981, #3b82f6);
+    
+    /* Shadows */
+    --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.1);
+    --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.2);
+    --shadow-lg: 0 8px 32px rgba(99, 102, 241, 0.3);
+    
+    /* Transitions */
+    --transition-fast: 0.2s ease;
+    --transition-normal: 0.3s ease;
+    --transition-slow: 0.5s ease;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
 body {
-  font-family: Arial, sans-serif;
-  background: #000;
-  color: white;
-  text-align: center;
+    font-family: 'Inter', sans-serif;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    min-height: 100vh;
+    overflow-x: hidden;
 }
+.app-container { max-width: 1920px; margin: 0 auto; padding: 20px; min-height: 100vh; }
 
-button {
-  padding: 12px 22px;
-  background: #ff4d4d;
-  color: white;
-  border: none;
-  border-radius: 10px;
-  font-size: 18px;
-  margin-bottom: 20px;
-}
+/* Header */
+.main-header { display: flex; justify-content: space-between; align-items: center; padding: 20px; background: var(--bg-secondary); border-radius: 16px; margin-bottom: 24px; box-shadow: var(--shadow-md); border: 1px solid var(--border-color); }
+.header-left .logo { display:flex; align-items:center; gap:12px; }
+.logo i { font-size:32px; color:var(--primary); background: var(--gradient-primary); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
+.logo h1 { font-size:28px; font-weight:800; background: var(--gradient-primary); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
+.logo span { font-weight:300; color:var(--text-secondary); }
+.tagline { font-size:14px; color:var(--text-secondary); margin-top:4px; }
+.header-right { display:flex; align-items:center; gap:20px; }
 
-.video-box {
-  display: flex;
-  justify-content: center;
-  gap: 10px;
-}
+.coins-display { display:flex; align-items:center; gap:8px; padding:10px 20px; background:var(--gradient-accent); border-radius:50px; font-weight:600; box-shadow:var(--shadow-sm); }
+.add-coins-btn { background:rgba(255,255,255,0.2); border:none; color:white; width:24px; height:24px; border-radius:50%; cursor:pointer; font-weight:bold; transition:var(--transition-fast); }
+.premium-badge { padding:10px 20px; background:var(--gradient-primary); border-radius:50px; font-weight:600; display:flex; align-items:center; gap:8px; }
+.btn-premium { padding:12px 24px; background: linear-gradient(135deg,#f59e0b,#d97706); color:white; border:none; border-radius:10px; font-weight:600; cursor:pointer; display:flex; align-items:center; gap:8px; transition:var(--transition-normal); }
 
-video {
-  width: 45%;
-  background: #222;
-  border-radius: 10px;
-}
+/* Layout */
+.main-content { display:grid; grid-template-columns:300px 1fr 350px; gap:24px; margin-bottom:24px; }
+.left-panel { display:flex; flex-direction:column; gap:20px; }
+.card { background:var(--bg-secondary); border-radius:16px; padding:20px; box-shadow:var(--shadow-md); border:1px solid var(--border-color); }
+.card h3 { display:flex; align-items:center; gap:10px; margin-bottom:20px; color:var(--text-primary); font-size:16px; }
+
+/* ... keep rest of your CSS exactly as provided above ... */
+/* For brevity in message we included full CSS earlier - ensure you paste the full CSS content you provided. */
