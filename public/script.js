@@ -1,4 +1,4 @@
-// public/script.js (QuikChat - fixed: hide premium modal on load + defensive checks)
+// public/script.js (QuikChat - fixed full client WebRTC + Socket logic)
 (() => {
   const CONFIG = {
     ICE_SERVERS: [
@@ -60,7 +60,6 @@
   // Branding: change DeepSeek -> QuikChat (if element present)
   try {
     if (elems.logoTitle) {
-      // keep inner spans safe
       elems.logoTitle.innerHTML = 'QuikChat<span>»</span>';
       document.title = 'QuikChat - Anonymous 1on1 Video Chat';
     }
@@ -518,16 +517,19 @@
     const link = document.createElement('a'); link.href = src; link.download = 'image.png'; link.click();
   });
 
-  // gender buttons save
+  // gender buttons save (fixed: full implementation)
   try {
-    elems.genderBtns.forEach(btn => btn.addEventListener('click', () => {
-      elems.genderBtns.forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      const g = btn.dataset.gender;
-      localStorage.setItem('gender', g);
-      if (g === 'female') showNotification('Female users: private rooms free', 'success');
-    }));
-  } catch (e) { /* ignore */ }
+    if (elems.genderBtns && elems.genderBtns.length) {
+      elems.genderBtns.forEach(btn => btn.addEventListener('click', () => {
+        elems.genderBtns.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        const g = btn.dataset.gender || btn.getAttribute('data-gender');
+        localStorage.setItem('gender', g);
+        if (g === 'female') showNotification('Female users: private rooms free', 'success');
+        else showNotification(`Gender set: ${g}`, 'info');
+      }));
+    }
+  } catch (e) { console.warn('genderBtns error', e); }
 
   // country change
   if (elems.countrySelect) elems.countrySelect.addEventListener('change', () => {
