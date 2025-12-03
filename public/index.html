@@ -1,19 +1,152 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>QuikChat 🔥</title>
-    <link rel="stylesheet" href="style.css" />
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>QuikChat - Anonymous 1on1 Video Chat</title>
+  <link rel="stylesheet" href="style.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
 <body>
-    <h2>QuikChat 🔥</h2>
+  <div class="app-container">
+    <header class="main-header">
+      <div class="header-left">
+        <div class="logo">
+          <i class="fas fa-comment-dots"></i>
+          <h1>QuikChat<span>»</span></h1>
+        </div>
+        <div class="tagline">Anonymous 1on1 Video Chat</div>
+      </div>
+      <div class="header-right">
+        <div class="coins-display">
+          <i class="fas fa-coins"></i>
+          <span id="coinsVal">500</span> Coins
+          <button class="add-coins-btn" id="addCoinsBtn">+</button>
+        </div>
+        <div class="premium-badge" id="premiumBadge">
+          <i class="fas fa-crown"></i> Free User
+        </div>
+        <button class="btn-premium" id="upgradeBtn"><i class="fas fa-rocket"></i> Upgrade</button>
+      </div>
+    </header>
 
-    <button id="findBtn">Find Partner</button>
+    <main class="main-content">
+      <aside class="left-panel">
+        <div class="user-card">
+          <div class="user-avatar"><i class="fas fa-user-circle"></i></div>
+          <div class="user-info">
+            <h3 id="userName">Guest_User</h3>
+            <div class="user-stats"><span><i class="fas fa-users"></i> 0 Chats</span></div>
+          </div>
+        </div>
 
-    <div class="video-box">
-        <video id="localVideo" autoplay muted></video>
-        <video id="remoteVideo" autoplay></video>
+        <div class="card">
+          <h3><i class="fas fa-venus-mars"></i> Your Gender</h3>
+          <div class="gender-selector">
+            <button class="gender-btn active" data-gender="male"><i class="fas fa-mars"></i> Male</button>
+            <button class="gender-btn" data-gender="female"><i class="fas fa-venus"></i> Female</button>
+            <button class="gender-btn" data-gender="other"><i class="fas fa-genderless"></i> Other</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3><i class="fas fa-globe-asia"></i> Target Country</h3>
+          <select id="countrySelect" class="styled-select">
+            <option value="ph">🇵🇭 Philippines</option>
+            <option value="any">🌍 Any Country</option>
+            <option value="us">🇺🇸 USA</option>
+            <option value="in">🇮🇳 India</option>
+            <option value="id">🇮🇩 Indonesia</option>
+            <option value="vn">🇻🇳 Vietnam</option>
+            <option value="th">🇹🇭 Thailand</option>
+          </select>
+        </div>
+
+        <div class="card">
+          <h3><i class="fas fa-gem"></i> Earn Coins</h3>
+          <div class="earn-options">
+            <button class="earn-btn" id="watchAdBtn"><i class="fas fa-tv"></i> Watch Ad (+10)</button>
+            <button class="earn-btn" id="inviteBtn"><i class="fas fa-user-plus"></i> Invite (+50)</button>
+            <button class="earn-btn" id="shareBtn"><i class="fas fa-share-alt"></i> Share (+20)</button>
+          </div>
+        </div>
+      </aside>
+
+      <section class="center-panel">
+        <div class="video-container">
+          <div class="video-wrapper local-video">
+            <div class="video-header"><i class="fas fa-user"></i><span>You <span id="localName">(Guest)</span></span>
+              <div class="video-status"><span class="status-dot active"></span> Online</div></div>
+            <div class="video-box">
+              <video id="localVideo" autoplay muted playsinline></video>
+              <div class="video-overlay">
+                <button class="overlay-btn" id="muteBtn"><i class="fas fa-microphone"></i></button>
+                <button class="overlay-btn" id="videoBtn"><i class="fas fa-video"></i></button>
+              </div>
+            </div>
+          </div>
+
+          <div class="video-wrapper remote-video">
+            <div class="video-header"><i class="fas fa-user-friends"></i><span id="remoteName">Waiting for partner...</span>
+              <div class="video-status" id="remoteStatus"><span class="status-dot"></span> Offline</div></div>
+            <div class="video-box">
+              <video id="remoteVideo" autoplay playsinline></video>
+              <div class="video-timer" id="timerContainer"><i class="fas fa-clock"></i><span id="timer">00:00</span></div>
+              <div class="privacy-shield" id="privacyShield" hidden><i class="fas fa-shield-alt"></i>
+                <p>Private Room Protected</p><small>No recording/screenshots allowed</small></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="controls-container">
+          <button class="control-btn primary" id="findBtn"><i class="fas fa-search"></i><span>Find Random Partner</span></button>
+          <button class="control-btn success" id="privateRoomBtn"><i class="fas fa-lock"></i><span>Private Room (10 coins/min)</span></button>
+          <button class="control-btn warning" id="nextBtn" disabled><i class="fas fa-forward"></i><span>Skip Partner</span></button>
+          <button class="control-btn danger" id="disconnectBtn" disabled><i class="fas fa-phone-slash"></i><span>End Call</span></button>
+          <button class="control-btn" id="switchCamBtn"><i class="fas fa-sync-alt"></i><span>Switch Camera</span></button>
+        </div>
+
+        <div class="file-share-container">
+          <h3><i class="fas fa-paperclip"></i> Share Files</h3>
+          <div class="file-buttons">
+            <button class="file-btn" id="imageBtn"><i class="fas fa-image"></i> Image</button>
+            <button class="file-btn" id="audioBtn"><i class="fas fa-music"></i> Music</button>
+            <button class="file-btn" id="stickerBtn"><i class="fas fa-sticky-note"></i> Sticker</button>
+            <input type="file" id="fileUpload" hidden accept="image/*,audio/*,video/*">
+          </div>
+        </div>
+      </section>
+
+      <aside class="right-panel">
+        <div class="chat-header"><h3><i class="fas fa-comments"></i> Chat</h3>
+          <div class="chat-actions"><button class="chat-action-btn" id="clearChatBtn"><i class="fas fa-trash"></i></button></div></div>
+
+        <div class="chat-messages" id="chatBox">
+          <div class="system-message"><i class="fas fa-info-circle"></i> Welcome to QuikChat! Click Find to start.</div>
+        </div>
+
+        <div class="chat-input-container">
+          <input type="text" id="chatInput" placeholder="Type your message..." maxlength="200">
+          <button class="send-btn" id="sendChatBtn"><i class="fas fa-paper-plane"></i></button>
+        </div>
+      </aside>
+    </main>
+
+    <div class="search-overlay" id="searchAnim" hidden>
+      <div class="search-content"><div class="search-animation"><div class="search-dot"></div><div class="search-dot"></div><div class="search-dot"></div></div>
+        <h3>Finding Partner...</h3><p>Searching for match in <span id="searchCountry">Philippines</span></p>
+        <div class="search-stats"><span><i class="fas fa-users"></i> online</span></div>
+        <button class="btn-cancel" id="cancelSearchBtn">Cancel Search</button>
+      </div>
     </div>
 
-    <script src="script.js" type="module"></script>
+    <div class="modal-overlay" id="zoomModal" hidden>
+      <div class="modal-content"><img id="zoomImg" src="" alt="Zoomed"><div class="modal-actions"><button class="modal-btn" id="downloadBtn"><i class="fas fa-download"></i> Download</button><button class="modal-btn" id="closeZoomBtn"><i class="fas fa-times"></i> Close</button></div></div>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="script.js"></script>
 </body>
-</html>
+          </html>l
