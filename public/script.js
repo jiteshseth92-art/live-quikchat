@@ -1,192 +1,136 @@
-// public/script.js (QuikChat minimal client)
-(() => {
-  const logEl = msg => {
-    const el = document.getElementById('log');
-    const t = new Date().toLocaleTimeString();
-    el.innerHTML += `<div>[${t}] ${msg}</div>`;
-    el.parentNode.scrollTop = el.parentNode.scrollHeight;
-    console.log(msg);
+const socket = io();
+
+// UI elements
+const findBtn = document.getElementById("findBtn");
+const nextBtn = document.getElementById("nextBtn");
+const disconnectBtn = document.getElementById("disconnectBtn");
+const messageInput = document.getElementById("messageInput");
+const sendBtn = document.getElementById("sendBtn");
+const messagesContainer = document.getElementById("messagesContainer");
+
+let localStream;
+let remoteStream;
+let peerConnection;
+let roomId = null;
+
+// ICE STUN servers
+const servers = {
+  iceServers: [
+    { urls: "stun:stun.l.google.com:19302" }
+  ]
+};
+
+// START MATCH
+findBtn.addEventListener("click", () => {
+  socket.emit("findPartner");
+  findBtn.style.display = "none";
+});
+
+// partner found
+socket.on("partnerFound", (data) => {
+  roomId = data.roomId;
+  createPeerConnection();
+  startLocalVideo();
+
+  nextBtn.style.display = "block";
+  disconnectBtn.style.display = "block";
+  document.getElementById("status").innerText = "Connected";
+});
+
+// Peer connection
+function createPeerConnection() {
+  peerConnection = new RTCPeerConnection(servers);
+
+  peerConnection.ontrack = (event) => {
+    remoteVideo.srcObject = event.streams[0];
   };
 
-  const socket = io({ transports: ['websocket'] });
-
-  const localVideo = document.getElementById('localVideo');
-  const remoteVideo = document.getElementById('remoteVideo');
-  const findBtn = document.getElementById('findBtn');
-  const nextBtn = document.getElementById('nextBtn');
-  const disconnectBtn = document.getElementById('disconnectBtn');
-  const muteBtn = document.getElementById('muteBtn');
-
-  let localStream = null;
-  let pc = null;
-  let partnerId = null;
-  let roomId = null;
-  let isMuted = false;
-
-  const ICE_SERVERS = [
-    { urls: "stun:stun.l.google.com:19302" }
-    // Add TURN if available
-  ];
-
-  async function ensureLocalStream() {
-    if (localStream) return localStream;
-    try {
-      localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-      localVideo.srcObject = localStream;
-      logEl('Got local stream');
-      return localStream;
-    } catch (err) {
-      alert('Please allow camera/mic.');
-      logEl('getUserMedia error: ' + err.message);
-      throw err;
-    }
-  }
-
-  function createPeerConnection() {
-    pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
-
-    pc.onicecandidate = (e) => {
-      if (e.candidate && partnerId) {
-        socket.emit('candidate', { to: partnerId, candidate: e.candidate });
-        logEl('Sent local ICE');
-      }
-    };
-
-    pc.ontrack = (e) => {
-      logEl('Remote track received');
-      remoteVideo.srcObject = e.streams[0] || e.stream;
-    };
-
-    pc.onconnectionstatechange = () => {
-      logEl('PC state: ' + pc.connectionState);
-      if (pc.connectionState === 'connected') {
-        disconnectBtn.disabled = false;
-        nextBtn.disabled = false;
-      } else if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed') {
-        endCall();
-      }
-    };
-
-    return pc;
-  }
-
-  async function startCallAsCaller(toId) {
-    await ensureLocalStream();
-    pc = createPeerConnection();
-    localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
-    socket.emit('offer', { to: toId, offer: offer.sdp || offer });
-    logEl('Offer sent to ' + toId);
-  }
-
-  async function handleRemoteOffer(from, sdp) {
-    partnerId = from;
-    await ensureLocalStream();
-    pc = createPeerConnection();
-    localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
-    const remoteDesc = { type: 'offer', sdp };
-    await pc.setRemoteDescription(new RTCSessionDescription(remoteDesc));
-    const answer = await pc.createAnswer();
-    await pc.setLocalDescription(answer);
-    socket.emit('answer', { to: from, answer: answer.sdp || answer });
-    logEl('Answer sent to ' + from);
-  }
-
-  async function handleRemoteAnswer(from, sdp) {
-    if (!pc) return;
-    const remoteDesc = { type: 'answer', sdp };
-    await pc.setRemoteDescription(new RTCSessionDescription(remoteDesc));
-    logEl('Remote answer set');
-  }
-
-  async function handleRemoteCandidate(candidate) {
-    try {
-      if (pc && candidate) await pc.addIceCandidate(new RTCIceCandidate(candidate));
-      logEl('Added remote ICE');
-    } catch (e) {
-      logEl('addIceCandidate err: ' + e);
-    }
-  }
-
-  // socket events
-  socket.on('connect', () => logEl('Socket connected: ' + socket.id));
-  socket.on('waiting', () => logEl('Waiting for partner...'));
-  socket.on('partnerFound', async (data) => {
-    logEl('partnerFound: ' + JSON.stringify(data));
-    partnerId = data.partnerId;
-    roomId = data.roomId || null;
-    // decide caller deterministically
-    const amCaller = socket.id < partnerId;
-    if (amCaller) {
-      await startCallAsCaller(partnerId);
-    } else {
-      logEl('Waiting for remote offer...');
-      try { await ensureLocalStream(); } catch(e){}
-    }
-  });
-
-  socket.on('offer', ({ from, offer }) => handleRemoteOffer(from, offer));
-  socket.on('answer', ({ from, answer }) => handleRemoteAnswer(from, answer));
-  socket.on('candidate', ({ from, candidate }) => handleRemoteCandidate(candidate));
-
-  // simple UI
-  findBtn.addEventListener('click', async () => {
-    findBtn.disabled = true;
-    try {
-      await ensureLocalStream();
-    } catch (_) {}
-    socket.emit('findPartner', { gender: 'any', country: 'any' });
-    logEl('Searching...');
-  });
-
-  nextBtn.addEventListener('click', () => {
-    socket.emit('next');
-    endCall();
-    socket.emit('findPartner', { gender: 'any', country: 'any' });
-    logEl('Skipping to next...');
-  });
-
-  disconnectBtn.addEventListener('click', () => {
-    socket.emit('leaveRoom');
-    endCall();
-  });
-
-  muteBtn.addEventListener('click', () => {
-    if (!localStream) return;
-    isMuted = !isMuted;
-    localStream.getAudioTracks().forEach(t => t.enabled = !isMuted);
-    muteBtn.innerText = isMuted ? 'Unmute' : 'Mute';
-  });
-
-  function endCall() {
-    try { pc?.close(); } catch (e) {}
-    pc = null;
-    partnerId = null;
-    roomId = null;
-    if (remoteVideo) remoteVideo.srcObject = null;
-    disconnectBtn.disabled = true;
-    nextBtn.disabled = true;
-    findBtn.disabled = false;
-    logEl('Call ended');
-  }
-
-  // Optional: fetch server-side LiveKit token (if you want to integrate LiveKit rooms later)
-  async function getLiveKitToken(identity, room='quikchat-room') {
-    try {
-      const r = await fetch('/api/livekit/token', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ identity, room })
+  peerConnection.onicecandidate = (event) => {
+    if (event.candidate) {
+      socket.emit("iceCandidate", {
+        candidate: event.candidate,
+        roomId,
       });
-      if (!r.ok) throw new Error('token failed');
-      return await r.json();
+    }
+  };
+}
+
+// Local video
+async function startLocalVideo() {
+  localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+  localVideo.srcObject = localStream;
+  localStream.getTracks().forEach((track) =>
+    peerConnection.addTrack(track, localStream)
+  );
+
+  const offer = await peerConnection.createOffer();
+  await peerConnection.setLocalDescription(offer);
+  socket.emit("offer", { offer, roomId });
+}
+
+socket.on("offer", async (data) => {
+  if (!peerConnection) createPeerConnection();
+  await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
+
+  const answer = await peerConnection.createAnswer();
+  await peerConnection.setLocalDescription(answer);
+
+  socket.emit("answer", { answer, roomId });
+});
+
+socket.on("answer", async (data) => {
+  await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
+});
+
+socket.on("iceCandidate", async (data) => {
+  if (data.candidate) {
+    try {
+      await peerConnection.addIceCandidate(data.candidate);
     } catch (e) {
-      logEl('LiveKit token error: ' + e.message);
-      return null;
+      console.log("ICE error", e);
     }
   }
+});
 
-  // expose for console
-  window.QC = { socket, getLiveKitToken };
-})();
+// NEXT & DISCONNECT
+nextBtn.addEventListener("click", () => {
+  socket.emit("disconnectPartner");
+  window.location.reload();
+});
+
+disconnectBtn.addEventListener("click", () => {
+  socket.emit("disconnectPartner");
+  window.location.reload();
+});
+
+// *************** TEXT CHAT SECTION *****************
+
+sendBtn.addEventListener("click", () => {
+  const message = messageInput.value.trim();
+  if (message === "") return;
+
+  addMessage(message, "me");
+  socket.emit("chatMessage", { message, roomId });
+  messageInput.value = "";
+});
+
+socket.on("chatMessage", (data) => {
+  addMessage(data.message, "other");
+});
+
+// Add bubble message to UI
+function addMessage(text, type) {
+  const div = document.createElement("div");
+  div.classList.add("bubble");
+  div.classList.add(type === "me" ? "me" : "other");
+  div.innerText = text;
+
+  messagesContainer.appendChild(div);
+  messagesContainer.scrollTop = messagesContainer.scrollHeight;
+}
+
+// Partner disconnected
+socket.on("partnerDisconnected", () => {
+  alert("Partner disconnected");
+  window.location.reload();
+});
