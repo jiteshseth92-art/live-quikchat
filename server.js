@@ -1,4 +1,4 @@
-// Patched server.js — WebRTC signaling + stable socket.io + room management
+// server.js - QuikChat simple matchmaking + file relay
 const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
@@ -7,309 +7,190 @@ const path = require('path');
 const app = express();
 const server = http.createServer(app);
 const io = socketIo(server, {
-  cors: { origin: "*", methods: ["GET","POST"] },
-  pingInterval: 20000,
-  pingTimeout: 60000,
-  transports: ['websocket', 'polling'],
-  allowEIO3: true
+  cors: { origin: "*", methods: ["GET","POST"] }
 });
 
 const PORT = process.env.PORT || 3000;
 
-// In-memory stores (replace with DB/Redis for prod)
-const users = new Map();
-const waitingUsers = [];
-const activeRooms = new Map();
-const privateRooms = new Map();
+const users = new Map();        // socketId -> user data
+const waiting = [];             // simple queue of waiting users
+const activeRooms = new Map();  // roomId -> {id, users, isPrivate}
 
-// Premium plans (example)
-const PREMIUM_PLANS = {
-  '1': { duration: 30, price: 9.99, coins: 0 },
-  '2': { duration: 60, price: 15.99, coins: 1000 }
-};
+function genId() { return Math.random().toString(36).substr(2,9); }
 
-const PRIORITY_COUNTRIES = ['ph','id','vn','th'];
-
-io.on('connection', (socket) => {
-  console.log('New connection:', socket.id, 'transport=', socket.conn && socket.conn.transport ? socket.conn.transport.name : 'unknown');
-
-  // Initialize user
+io.on('connection', socket => {
+  console.log('New connection:', socket.id);
   users.set(socket.id, {
     id: socket.id,
     gender: 'male',
-    country: 'any',
+    country: 'ph',
     coins: 500,
     isPremium: false,
-    isFemale: false,
-    premiumExpiry: null,
     reportedCount: 0,
     joinTime: Date.now()
   });
 
-  // Generic signaling relay (if client uses single 'signal' channel)
-  socket.on('signal', ({ to, data }) => {
-    if (!to || !data) return;
-    const target = io.sockets.sockets.get(to);
-    if (target) target.emit('signal', { from: socket.id, data });
-    else console.warn('signal target not found', to);
+  socket.on('setUserData', data => {
+    const u = users.get(socket.id);
+    if (!u) return;
+    Object.assign(u, data);
   });
 
-  // Offer / Answer / Candidate (supporting both explicit names and generic)
-  socket.on('offer', ({ offer, to }) => {
-    if (!to || !offer) return;
-    io.to(to).emit('offer', { offer, from: socket.id });
-  });
-
-  socket.on('answer', ({ answer, to }) => {
-    if (!to || !answer) return;
-    io.to(to).emit('answer', { answer, from: socket.id });
-  });
-
-  socket.on('candidate', ({ candidate, to }) => {
-    if (!to || !candidate) return;
-    io.to(to).emit('candidate', { candidate, from: socket.id });
-  });
-
-  // Compatibility: some clients might send iceCandidate name
-  socket.on('iceCandidate', ({ candidate, to }) => {
-    if (!to || !candidate) return;
-    io.to(to).emit('candidate', { candidate, from: socket.id });
-  });
-
-  // Find partner
-  socket.on('findPartner', (data = {}) => {
+  socket.on('findPartner', payload => {
+    // payload: { gender, country, wantPrivate }
     const user = users.get(socket.id);
     if (!user) return;
+    user.gender = payload.gender || user.gender;
+    user.country = payload.country || user.country;
 
-    data.gender = (data.gender || user.gender || 'male').toLowerCase();
-    data.country = (data.country || user.country || 'any').toLowerCase();
-    data.wantPrivate = !!data.wantPrivate;
-
-    user.gender = data.gender;
-    user.country = data.country;
-    user.isFemale = (data.gender === 'female');
-
-    if (user.reportedCount >= 3) {
-      socket.emit('banned', { reason: 'Multiple reports' });
-      return;
+    // try to find matching waiting user
+    let matchedIndex = -1;
+    for (let i = 0; i < waiting.length; i++) {
+      const w = waiting[i];
+      if (w.socketId === socket.id) continue;
+      // simple checks: wantPrivate match and country preference or any
+      if ((payload.wantPrivate || false) !== (w.wantPrivate || false)) continue;
+      if (payload.country !== 'any' && w.country !== 'any' && payload.country !== w.country) {
+        // continue only if both specified and mismatch
+        if (payload.country !== 'any' && w.country !== 'any' && payload.country !== w.country) continue;
+      }
+      matchedIndex = i;
+      break;
     }
 
-    const matchSocketId = findMatch(socket.id, data);
-    if (matchSocketId) createRoom(socket.id, matchSocketId, data.wantPrivate);
-    else {
-      addToWaiting(socket.id, data);
+    if (matchedIndex !== -1) {
+      const matched = waiting.splice(matchedIndex,1)[0];
+      createRoom(socket.id, matched.socketId, payload.wantPrivate || false);
+    } else {
+      // push to waiting queue
+      waiting.push({
+        socketId: socket.id,
+        gender: payload.gender || user.gender,
+        country: payload.country || user.country,
+        wantPrivate: payload.wantPrivate || false,
+        ts: Date.now()
+      });
       socket.emit('waiting');
     }
   });
 
-  // Skip partner -> find new
-  socket.on('next', () => {
-    // if in room, kick partner and cleanup
-    const room = getRoomByUserId(socket.id);
-    if (room) {
-      const partnerId = room.users.find(id => id !== socket.id);
-      if (partnerId) io.to(partnerId).emit('partnerDisconnected', { reason: 'skipped' });
-      // delete room
-      if (room.isPrivate) privateRooms.delete(room.id);
-      else activeRooms.delete(room.id);
-    }
-    removeFromWaiting(socket.id);
-    socket.emit('findNewPartner');
+  socket.on('offer', ({ offer, to }) => {
+    if (!to) return;
+    io.to(to).emit('offer', { from: socket.id, offer });
   });
 
-  // Create private room request
-  socket.on('createPrivateRoom', (data = {}) => {
-    const user = users.get(socket.id);
-    if (!user) return;
+  socket.on('answer', ({ answer, to }) => {
+    if (!to) return;
+    io.to(to).emit('answer', { from: socket.id, answer });
+  });
 
-    if (!user.isFemale && !user.isPremium) {
-      if (user.coins < 10) {
-        socket.emit('insufficientCoins');
-        return;
-      }
-      user.coins -= 10; // immediate deduction demo
-      socket.emit('coinsUpdated', { coins: user.coins });
+  socket.on('candidate', ({ candidate, to }) => {
+    if (!to) return;
+    io.to(to).emit('candidate', { from: socket.id, candidate });
+  });
+
+  // generic relay
+  socket.on('signal', ({ to, data }) => {
+    if (!to) return;
+    io.to(to).emit('signal', { from: socket.id, data });
+  });
+
+  socket.on('sendFile', data => {
+    const room = findRoomBySocket(socket.id);
+    if (room) {
+      socket.to(room.id).emit('file', data);
     }
+  });
 
-    const roomId = generateRoomId();
-    const room = { id: roomId, users: [socket.id], isPrivate: true, createdAt: Date.now(), costPerMinute: user.isPremium || user.isFemale ? 0 : 10 };
-    privateRooms.set(roomId, room);
+  socket.on('chat', ({ text, roomId }) => {
+    // broadcast to room if present
+    const room = findRoomBySocket(socket.id);
+    if (room) io.to(room.id).emit('chat', { from: socket.id, text });
+  });
+
+  socket.on('createPrivateRoom', ({ gender, country }) => {
+    // create private room with this user only; partner can join using room id in real app
+    const roomId = genId();
+    const room = { id: roomId, users: [socket.id], isPrivate: true, createdAt: Date.now() };
+    activeRooms.set(roomId, room);
     socket.join(roomId);
     socket.emit('privateRoomCreated', { roomId });
-    console.log('Private room created by', socket.id, '->', roomId);
   });
 
-  socket.on('joinPrivateRoom', ({ roomId }) => {
-    const room = privateRooms.get(roomId);
-    if (!room) { socket.emit('privateRoomJoinFailed', { reason: 'not_found' }); return; }
-    if (room.users.length >= 2) { socket.emit('privateRoomJoinFailed', { reason: 'full' }); return; }
-
-    room.users.push(socket.id);
-    privateRooms.set(roomId, room);
-    socket.join(roomId);
-    io.to(roomId).emit('privateRoomJoined', { roomId, partnerId: room.users.find(id => id !== socket.id) });
-    console.log('User', socket.id, 'joined private room', roomId);
-  });
-
-  // File sharing / reports / coins handled already; keep handlers
-  socket.on('sendFile', (data) => {
-    const room = getRoomByUserId(socket.id);
-    if (!room) { socket.emit('noRoom', { reason: 'not_in_room' }); return; }
-    // simple content warning simulation
-    if (data.type === 'image' && Math.random() < 0.1) {
-      io.to(room.id).emit('contentWarning', { type: 'nudity', action: 'suggestPrivate' });
-    }
-    socket.to(room.id).emit('file', data);
-  });
-
-  socket.on('updateCoins', (data) => {
-    const user = users.get(socket.id);
-    if (user && typeof data.coins === 'number') {
-      user.coins = data.coins;
-      socket.emit('coinsUpdated', { coins: user.coins });
-    }
-  });
-
-  socket.on('reportUser', (data) => {
-    const room = activeRooms.get(data.roomId) || privateRooms.get(data.roomId);
-    if (!room) return;
-    const reportedId = room.users.find(id => id !== socket.id);
-    if (!reportedId) return;
-    const reported = users.get(reportedId);
-    if (!reported) return;
-    reported.reportedCount = (reported.reportedCount || 0) + 1;
-    console.log('Report from', socket.id, 'about', reportedId, data.reason);
-    if (reported.reportedCount >= 3) io.to(reportedId).emit('banned', { reason: 'Multiple violations' });
-  });
-
-  // Voluntary leave room
-  socket.on('leaveRoom', () => {
-    const room = getRoomByUserId(socket.id);
-    if (!room) { socket.emit('leftRoom', { ok: true }); return; }
-    const partnerId = room.users.find(id => id !== socket.id);
-    if (partnerId) io.to(partnerId).emit('partnerLeft');
-    room.users = room.users.filter(id => id !== socket.id);
-    if (room.users.length === 0) {
-      if (room.isPrivate) privateRooms.delete(room.id);
-      else activeRooms.delete(room.id);
-      console.log('Room removed after leave:', room.id);
-    } else {
-      if (room.isPrivate) privateRooms.set(room.id, room);
-      else activeRooms.set(room.id, room);
-    }
-    socket.leave(room.id);
-    socket.emit('leftRoom', { ok: true });
-  });
-
-  // Disconnect
-  socket.on('disconnect', (reason) => {
-    const room = getRoomByUserId(socket.id);
+  socket.on('next', () => {
+    // if client requests next, try to find a new partner: just leave and re-find
+    const room = findRoomBySocket(socket.id);
     if (room) {
-      const partnerId = room.users.find(id => id !== socket.id);
-      if (partnerId) io.to(partnerId).emit('partnerDisconnected');
-      if (room.isPrivate) privateRooms.delete(room.id);
-      else activeRooms.delete(room.id);
+      // notify partner, cleanup
+      const partner = room.users.find(id => id !== socket.id);
+      if (partner) io.to(partner).emit('partnerDisconnected', { by: socket.id });
+      // remove room
+      activeRooms.delete(room.id);
+      for (const id of room.users) {
+        try { io.sockets.sockets.get(id)?.leave(room.id); } catch(e){}
+      }
     }
+  });
+
+  socket.on('leaveRoom', () => {
+    const room = findRoomBySocket(socket.id);
+    if (room) {
+      const partner = room.users.find(id => id !== socket.id);
+      if (partner) io.to(partner).emit('partnerDisconnected', { by: socket.id });
+      activeRooms.delete(room.id);
+      for (const id of room.users) try { io.sockets.sockets.get(id)?.leave(room.id); } catch(e){}
+    }
+  });
+
+  socket.on('disconnect', () => {
+    // cleanup waiting and rooms
     removeFromWaiting(socket.id);
+    const room = findRoomBySocket(socket.id);
+    if (room) {
+      const partner = room.users.find(id => id !== socket.id);
+      if (partner) io.to(partner).emit('partnerDisconnected', { by: socket.id });
+      activeRooms.delete(room.id);
+    }
     users.delete(socket.id);
-    console.log('User disconnected:', socket.id, reason);
+    console.log('Socket disconnected', socket.id);
   });
 });
 
-// Helper functions
-function findMatch(userId, data = {}) {
-  const user = users.get(userId);
-  if (!user) return null;
-  for (let i = 0; i < waitingUsers.length; i++) {
-    const waiting = waitingUsers[i];
-    if (waiting.socketId === userId) continue;
-    const waitingUser = users.get(waiting.socketId);
-    if (!waitingUser) continue;
-    if ((data.wantPrivate || false) !== (waiting.wantPrivate || false)) continue;
-    if (data.genderPref && data.genderPref !== 'any' && data.genderPref !== waitingUser.gender) continue;
-    if (data.country === 'ph' || waiting.country === 'ph') {
-      waitingUsers.splice(i,1);
-      return waiting.socketId;
-    }
-    if (data.country && data.country !== 'any' && data.country !== waiting.country) continue;
-    waitingUsers.splice(i,1);
-    return waiting.socketId;
+function createRoom(a, b, isPrivate = false) {
+  const roomId = genId();
+  const room = { id: roomId, users: [a,b], isPrivate, createdAt: Date.now() };
+  activeRooms.set(roomId, room);
+  try { io.sockets.sockets.get(a).join(roomId); } catch(e){}
+  try { io.sockets.sockets.get(b).join(roomId); } catch(e){}
+  io.to(a).emit('partnerFound', { roomId, partnerId: b, partnerName: `User_${b.substr(0,5)}`, isPrivate });
+  io.to(b).emit('partnerFound', { roomId, partnerId: a, partnerName: `User_${a.substr(0,5)}`, isPrivate });
+  console.log(`Created room ${roomId} for ${a} & ${b}`);
+}
+
+function findRoomBySocket(id) {
+  for (const r of activeRooms.values()) {
+    if (r.users.includes(id)) return r;
   }
   return null;
 }
 
-function createRoom(userId1, userId2, isPrivate = false) {
-  const roomId = generateRoomId();
-  const room = { id: roomId, users: [userId1, userId2], isPrivate, createdAt: Date.now() };
-  if (isPrivate) privateRooms.set(roomId, room); else activeRooms.set(roomId, room);
-
-  // Ensure sockets exist and join them to room BEFORE emitting events
-  const sock1 = io.sockets.sockets.get(userId1);
-  const sock2 = io.sockets.sockets.get(userId2);
-  if (sock1) sock1.join(roomId);
-  if (sock2) sock2.join(roomId);
-
-  const user1 = users.get(userId1);
-  const user2 = users.get(userId2);
-
-  if (sock1) sock1.emit('partnerFound', {
-    roomId, partnerId: userId2, partnerName: `User_${String(userId2).substr(0,5)}`,
-    partnerGender: user2 ? user2.gender : 'unknown', partnerCountry: user2 ? user2.country : 'any', isPrivate
-  });
-  if (sock2) sock2.emit('partnerFound', {
-    roomId, partnerId: userId1, partnerName: `User_${String(userId1).substr(0,5)}`,
-    partnerGender: user1 ? user1.gender : 'unknown', partnerCountry: user1 ? user1.country : 'any', isPrivate
-  });
-
-  console.log(`Room ${roomId} created for ${userId1} and ${userId2}`);
+function removeFromWaiting(id) {
+  const idx = waiting.findIndex(w => w.socketId === id);
+  if (idx !== -1) waiting.splice(idx,1);
 }
 
-function addToWaiting(userId, data = {}) {
-  waitingUsers.push({
-    socketId: userId,
-    gender: data.gender || 'unknown',
-    country: data.country || 'any',
-    wantPrivate: !!data.wantPrivate,
-    timestamp: Date.now()
-  });
-  waitingUsers.sort((a,b) => (PRIORITY_COUNTRIES.includes(b.country)?1:0) - (PRIORITY_COUNTRIES.includes(a.country)?1:0));
-  console.log('Waiting list count:', waitingUsers.length);
-}
-
-function removeFromWaiting(userId) {
-  const idx = waitingUsers.findIndex(w => w.socketId === userId);
-  if (idx !== -1) waitingUsers.splice(idx,1);
-}
-
-function getRoomByUserId(userId) {
-  for (const [id, room] of activeRooms) if (room.users.includes(userId)) return room;
-  for (const [id, room] of privateRooms) if (room.users.includes(userId)) return room;
-  return null;
-}
-
-function generateRoomId() {
-  return Math.random().toString(36).substr(2, 9);
-}
-
-// Express static + APIs
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json({ limit: '50mb' }));
-
-app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
 app.get('/stats', (req, res) => {
   res.json({
     totalUsers: users.size,
-    waitingUsers: waitingUsers.length,
-    activeRooms: activeRooms.size,
-    privateRooms: privateRooms.size,
-    phUsers: Array.from(users.values()).filter(u => u.country === 'ph').length,
-    femaleUsers: Array.from(users.values()).filter(u => u.isFemale).length
+    waiting: waiting.length,
+    activeRooms: activeRooms.size
   });
 });
 
 server.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-  console.log(`Priority country: Philippines`);
-  console.log(`Stats: http://localhost:${PORT}/stats`);
+  console.log(`QuikChat server listening on port ${PORT}`);
+  console.log(`Open http://localhost:${PORT}`);
 });
