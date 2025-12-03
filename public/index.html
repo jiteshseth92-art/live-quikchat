@@ -1,42 +1,19 @@
-<!doctype html>
-<html lang="en">
+<!DOCTYPE html>
+<html>
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>QuikChat - Minimal</title>
-  <style>
-    body { font-family: system-ui, Arial; background:#0f172a; color:#e6eef8; display:flex; flex-direction:column; align-items:center; padding:18px; }
-    .videos { display:flex; gap:12px; margin:16px; }
-    video { width:320px; height:240px; background:#000; border-radius:8px; object-fit:cover; }
-    .controls { display:flex; gap:8px; margin-top:12px; }
-    button { padding:10px 14px; border-radius:8px; border:none; cursor:pointer; background:#6366f1; color:white; }
-    #log { margin-top:12px; width:700px; max-width:95%; height:120px; background:#071127; color:#9fb3e6; padding:10px; overflow:auto; border-radius:8px; font-size:13px; }
-  </style>
+    <title>QuikChat 🔥</title>
+    <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <h2>QuikChat — Minimal test</h2>
+    <h2>QuikChat 🔥</h2>
 
-  <div class="videos">
-    <div>
-      <div style="font-size:13px;margin-bottom:6px">Local</div>
-      <video id="localVideo" autoplay muted playsinline></video>
-    </div>
-    <div>
-      <div style="font-size:13px;margin-bottom:6px">Remote</div>
-      <video id="remoteVideo" autoplay playsinline></video>
-    </div>
-  </div>
-
-  <div class="controls">
     <button id="findBtn">Find Partner</button>
-    <button id="nextBtn" disabled>Next</button>
-    <button id="endBtn" disabled>End Call</button>
-    <button id="muteBtn">Mute</button>
-  </div>
 
-  <div id="log"></div>
+    <div class="video-box">
+        <video id="localVideo" autoplay muted></video>
+        <video id="remoteVideo" autoplay></video>
+    </div>
 
-  <script src="/socket.io/socket.io.js"></script>
-  <script src="script.js"></script>
+    <script src="script.js" type="module"></script>
 </body>
 </html>
