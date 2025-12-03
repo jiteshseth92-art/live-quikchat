@@ -1,188 +1,64 @@
-// server.js - QuikChat simple signaling + matching server
+// server.js
+// QuikChat minimal server: static site + socket.io pairing + LiveKit short token endpoint
 const express = require('express');
 const http = require('http');
-const { Server } = require('socket.io');
 const path = require('path');
+const cors = require('cors');
+const bodyParser = require('body-parser');
+const { AccessToken } = require('livekit-server-sdk'); // server-side token minting
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server, {
-  cors: { origin: "*", methods: ["GET", "POST"] }
-});
+const io = require('socket.io')(server, { cors: { origin: "*", methods: ["GET","POST"] } });
 
 const PORT = process.env.PORT || 3000;
 
-// In-memory simulation (simple)
+// --- In-memory matchmaking (simple) ---
 const users = new Map();
-const waiting = []; // queue of { socketId, gender, country, wantPrivate }
+const waiting = [];
 
-function generateRoomId() {
-  return Math.random().toString(36).substr(2,9);
-}
+// serve static
+app.use(cors());
+app.use(bodyParser.json({ limit: '10mb' }));
+app.use(express.static(path.join(__dirname, 'public')));
 
-io.on('connection', socket => {
-  console.log('connect', socket.id);
+// Endpoint to mint LiveKit token for a client (server uses LIVEKIT_API_KEY + SECRET)
+app.post('/api/livekit/token', (req, res) => {
+  const LIVEKIT_URL = process.env.LIVEKIT_URL;          // e.g. wss://xxx.livekit.cloud
+  const LIVEKIT_API_KEY = process.env.LIVEKIT_API_KEY;  // set in Render env
+  const LIVEKIT_API_SECRET = process.env.LIVEKIT_API_SECRET; // set in Render env
 
-  // create user default
-  users.set(socket.id, {
-    id: socket.id,
-    gender: 'male',
-    country: 'ph',
-    coins: 500,
-    isPremium: false,
-    reportedCount: 0,
-    joinTime: Date.now()
-  });
+  if (!LIVEKIT_API_KEY || !LIVEKIT_API_SECRET || !LIVEKIT_URL) {
+    return res.status(500).json({ error: 'LiveKit env not configured on server.' });
+  }
 
-  socket.on('setUserData', (data) => {
-    const u = users.get(socket.id) || {};
-    Object.assign(u, data);
-    users.set(socket.id, u);
-  });
+  try {
+    // identity and room from client
+    const identity = req.body.identity || `user-${Math.random().toString(36).substr(2,6)}`;
+    const room = req.body.room || 'quikchat-room';
 
-  // Find partner - simple FIFO with country/gender preference support
-  socket.on('findPartner', (data = {}) => {
-    const user = users.get(socket.id) || {};
-    user.gender = data.gender || user.gender || 'male';
-    user.country = data.country || user.country || 'ph';
-    users.set(socket.id, user);
-
-    // Try to find match
-    let partnerId = null;
-    for (let i = 0; i < waiting.length; i++) {
-      const w = waiting[i];
-      if (w.socketId === socket.id) continue;
-      // preference matching: wantPrivate, country (if specified), genderPref (if provided)
-      if ((data.wantPrivate || false) !== (w.wantPrivate || false)) continue;
-      if (data.genderPref && data.genderPref !== 'any' && data.genderPref !== (w.gender || 'male')) continue;
-      // simple country friendly: prefer same country or 'any'
-      if (data.country && data.country !== 'any' && data.country !== w.country) continue;
-      partnerId = waiting.splice(i,1)[0].socketId;
-      break;
-    }
-
-    if (partnerId) {
-      const roomId = generateRoomId();
-      // notify both
-      io.to(socket.id).emit('partnerFound', {
-        roomId,
-        partnerId,
-        partnerName: `User_${partnerId.substr(0,5)}`,
-        isPrivate: data.wantPrivate || false
-      });
-      io.to(partnerId).emit('partnerFound', {
-        roomId,
-        partnerId: socket.id,
-        partnerName: `User_${socket.id.substr(0,5)}`,
-        isPrivate: data.wantPrivate || false
-      });
-      // join server rooms to allow server broadcast if needed
-      socket.join(roomId);
-      io.sockets.sockets.get(partnerId)?.join(roomId);
-      console.log(`Paired ${socket.id} <-> ${partnerId} in room ${roomId}`);
-      return;
-    }
-
-    // otherwise add to waiting
-    waiting.push({
-      socketId: socket.id,
-      gender: user.gender,
-      country: user.country,
-      wantPrivate: data.wantPrivate || false,
-      ts: Date.now()
+    // create Access Token
+    const at = new AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET, {
+      identity,
     });
-    socket.emit('waiting');
-  });
 
-  // Next -> ask server for next partner (just disconnect current and re-find)
-  socket.on('next', () => {
-    // remove from waiting if present
-    for (let i = 0; i < waiting.length; i++) {
-      if (waiting[i].socketId === socket.id) { waiting.splice(i,1); break; }
-    }
-    socket.emit('findNewPartner');
-  });
+    // grant join permission
+    at.addGrant({ roomJoin: true, room });
+    const token = at.toJwt(); // short-lived by default (no TTL set -> default)
 
-  // Signaling events - forward by "to"
-  socket.on('offer', ({ offer, to }) => {
-    if (!to) return;
-    io.to(to).emit('offer', { from: socket.id, offer });
-  });
-  socket.on('answer', ({ answer, to }) => {
-    if (!to) return;
-    io.to(to).emit('answer', { from: socket.id, answer });
-  });
-  socket.on('candidate', ({ candidate, to }) => {
-    if (!to) return;
-    io.to(to).emit('candidate', { from: socket.id, candidate });
-  });
-
-  // generic signal fallback
-  socket.on('signal', ({ to, data }) => {
-    if (!to) return;
-    io.to(to).emit('signal', { from: socket.id, data });
-  });
-
-  // chat forwarding (room or to)
-  socket.on('chat', ({ text, roomId, to }) => {
-    if (roomId) {
-      socket.to(roomId).emit('chat', { from: socket.id, text });
-    } else if (to) {
-      io.to(to).emit('chat', { from: socket.id, text });
-    } else {
-      // broadcast only in same socket.io rooms
-      socket.broadcast.emit('chat', { from: socket.id, text });
-    }
-  });
-
-  // file sending (base64) - forward to room or to recipient
-  socket.on('sendFile', (payload) => {
-    // payload should contain {type,name,data,size,roomId,to}
-    if (!payload) return;
-    if (payload.roomId) {
-      socket.to(payload.roomId).emit('file', payload);
-    } else if (payload.to) {
-      io.to(payload.to).emit('file', payload);
-    } else {
-      socket.broadcast.emit('file', payload);
-    }
-  });
-
-  // createPrivateRoom simple flow (server creates room and adds socket)
-  socket.on('createPrivateRoom', (data) => {
-    const roomId = generateRoomId();
-    socket.join(roomId);
-    // (server side coin deduction not implemented in this simple demo)
-    socket.emit('privateRoomCreated', { roomId });
-  });
-
-  socket.on('leaveRoom', (data) => {
-    // optionally data.roomId - if provided remove from that room
-    // We'll just make socket leave all rooms except default
-    const rooms = Array.from(socket.rooms);
-    rooms.forEach(r => {
-      if (r !== socket.id) socket.leave(r);
+    return res.json({
+      token,
+      livekitUrl: LIVEKIT_URL,
+      identity,
+      room
     });
-    socket.emit('left');
-  });
-
-  socket.on('reportUser', (d) => {
-    // log only
-    console.log('reportUser', d);
-  });
-
-  socket.on('disconnect', () => {
-    console.log('disconnect', socket.id);
-    // remove waiting if exists
-    for (let i = 0; i < waiting.length; i++) {
-      if (waiting[i].socketId === socket.id) { waiting.splice(i,1); break; }
-    }
-    users.delete(socket.id);
-  });
+  } catch (err) {
+    console.error('token error', err);
+    return res.status(500).json({ error: 'failed to generate token' });
+  }
 });
 
-// Serve public folder
-app.use(express.static(path.join(__dirname, 'public')));
+// Simple stats endpoint
 app.get('/stats', (req, res) => {
   res.json({
     totalUsers: users.size,
@@ -190,6 +66,79 @@ app.get('/stats', (req, res) => {
   });
 });
 
+// basic socket.io for random pairing & pass-through signalling
+io.on('connection', (socket) => {
+  console.log('New conn', socket.id);
+  users.set(socket.id, { id: socket.id, created: Date.now() });
+
+  socket.on('findPartner', (prefs) => {
+    // simple: if someone waiting, match; else push to waiting
+    const waitingSomeone = waiting.shift();
+    if (waitingSomeone && waitingSomeone !== socket.id) {
+      // create room id
+      const roomId = Math.random().toString(36).substr(2,9);
+      // notify both
+      io.to(socket.id).emit('partnerFound', { partnerId: waitingSomeone, roomId, isPrivate: false });
+      io.to(waitingSomeone).emit('partnerFound', { partnerId: socket.id, roomId, isPrivate: false });
+      // join both sockets to a socket.io room for message broadcasting
+      socket.join(roomId);
+      io.sockets.sockets.get(waitingSomeone)?.join(roomId);
+      console.log(`Matched ${socket.id} <-> ${waitingSomeone} in ${roomId}`);
+    } else {
+      // add this socket id to waiting list
+      waiting.push(socket.id);
+      io.to(socket.id).emit('waiting');
+    }
+  });
+
+  // basic signalling passthroughs
+  socket.on('offer', (data) => {
+    if (data.to) io.to(data.to).emit('offer', { from: socket.id, offer: data.offer });
+  });
+  socket.on('answer', (data) => {
+    if (data.to) io.to(data.to).emit('answer', { from: socket.id, answer: data.answer });
+  });
+  socket.on('candidate', (data) => {
+    if (data.to) io.to(data.to).emit('candidate', { from: socket.id, candidate: data.candidate });
+  });
+
+  // file/chat broadcast to room
+  socket.on('sendFile', (payload) => {
+    // if room provided, broadcast to room, otherwise broadcast to partner by socket id
+    if (payload.roomId) {
+      io.to(payload.roomId).emit('file', payload);
+    } else if (payload.to) {
+      io.to(payload.to).emit('file', payload);
+    }
+  });
+
+  socket.on('chat', (data) => {
+    if (data.roomId) io.to(data.roomId).emit('chat', { text: data.text, from: socket.id });
+    else if (data.to) io.to(data.to).emit('chat', { text: data.text, from: socket.id });
+  });
+
+  socket.on('leaveRoom', () => {
+    // remove from waiting if present
+    const idx = waiting.indexOf(socket.id);
+    if (idx !== -1) waiting.splice(idx, 1);
+    // leave all rooms
+    const rooms = Array.from(socket.rooms);
+    rooms.forEach(r => { if (r !== socket.id) socket.leave(r); });
+  });
+
+  socket.on('disconnect', () => {
+    users.delete(socket.id);
+    const idx = waiting.indexOf(socket.id);
+    if (idx !== -1) waiting.splice(idx, 1);
+    console.log('disconnect', socket.id);
+  });
+});
+
+// fallback - serve index.html
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
 server.listen(PORT, () => {
-  console.log(`QuikChat server started on port ${PORT}`);
+  console.log(`Server listening on port ${PORT}`);
 });
