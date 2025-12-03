@@ -1,43 +1,36 @@
-const express = require("express");
-const http = require("http");
-const { Server } = require("socket.io");
+import express from "express";
+import cors from "cors";
+import { AccessToken } from "livekit-server-sdk";
 
 const app = express();
-const server = http.createServer(app);
-const io = new Server(server);
+app.use(express.json());
+app.use(cors());
 
-app.use(express.static("public"));
+const LIVEKIT_URL = process.env.LIVEKIT_URL;
+const LIVEKIT_API_KEY = process.env.LIVEKIT_API_KEY;
+const LIVEKIT_API_SECRET = process.env.LIVEKIT_API_SECRET;
 
-let waitingUser = null;
-
-io.on("connection", (socket) => {
-  console.log("User connected:", socket.id);
-
-  socket.on("find", () => {
-    if (waitingUser) {
-      io.to(waitingUser).emit("match", socket.id);
-      io.to(socket.id).emit("match", waitingUser);
-      waitingUser = null;
-    } else {
-      waitingUser = socket.id;
-    }
-  });
-
-  socket.on("offer", ({ offer, to }) => {
-    io.to(to).emit("offer", { offer, from: socket.id });
-  });
-
-  socket.on("answer", ({ answer, to }) => {
-    io.to(to).emit("answer", { answer });
-  });
-
-  socket.on("ice", ({ ice, to }) => {
-    io.to(to).emit("ice", { ice });
-  });
-
-  socket.on("disconnect", () => {
-    if (waitingUser === socket.id) waitingUser = null;
-  });
+app.get("/", (req, res) => {
+  res.send("QuikChat LiveKit Server Running");
 });
 
-server.listen(3000, () => console.log("SERVER RUNNING 3000"));
+app.get("/getToken", async (req, res) => {
+  const identity = `user-${Math.floor(Math.random() * 999999)}`;
+
+  const at = new AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET, {
+    identity,
+  });
+
+  at.addGrant({
+    roomJoin: true,
+    room: "quikchat-room",
+    canPublish: true,
+    canSubscribe: true,
+  });
+
+  const token = await at.toJwt();
+  res.send({ token });
+});
+
+const port = process.env.PORT || 3000;
+app.listen(port, () => console.log("LiveKit Signal Server on PORT:", port));
