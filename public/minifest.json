@@ -1,8 +1,226 @@
 {
   "name": "QuikChat",
   "short_name": "QuikChat",
+  "description": "Random Video Chat with Earning System - Meet new people worldwide instantly",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
-  "background_color": "#0052ff",
-  "theme_color": "#0052ff"
-}
+  "orientation": "portrait-primary",
+  "theme_color": "#0066ff",
+  "background_color": "#ffffff",
+  "categories": [
+    "social",
+    "entertainment",
+    "communication"
+  ],
+  "lang": "en-US",
+  "dir": "ltr",
+  "icons": [
+    {
+      "src": "/icon-72x72.png",
+      "sizes": "72x72",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-96x96.png",
+      "sizes": "96x96",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-128x128.png",
+      "sizes": "128x128",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-144x144.png",
+      "sizes": "144x144",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-152x152.png",
+      "sizes": "152x152",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-384x384.png",
+      "sizes": "384x384",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/maskable-icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Start Chat",
+      "short_name": "Chat",
+      "description": "Start random video chat",
+      "url": "/?start=chat",
+      "icons": [
+        {
+          "src": "/shortcuts/chat.png",
+          "sizes": "96x96",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Earnings Dashboard",
+      "short_name": "Earnings",
+      "description": "View your earnings",
+      "url": "/?start=earnings",
+      "icons": [
+        {
+          "src": "/shortcuts/earnings.png",
+          "sizes": "96x96",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Find Partner",
+      "short_name": "Find",
+      "description": "Find new video chat partner",
+      "url": "/?start=find",
+      "icons": [
+        {
+          "src": "/shortcuts/find.png",
+          "sizes": "96x96",
+          "type": "image/png"
+        }
+      ]
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/screenshots/mobile-1.png",
+      "sizes": "1080x1920",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Mobile chat interface"
+    },
+    {
+      "src": "/screenshots/mobile-2.png",
+      "sizes": "1080x1920",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Earnings dashboard"
+    },
+    {
+      "src": "/screenshots/desktop-1.png",
+      "sizes": "1920x1080",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "Desktop video chat"
+    },
+    {
+      "src": "/screenshots/desktop-2.png",
+      "sizes": "1920x1080",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "Global statistics"
+    }
+  ],
+  "related_applications": [
+    {
+      "platform": "play",
+      "url": "https://play.google.com/store/apps/details?id=com.quikchat.app",
+      "id": "com.quikchat.app"
+    },
+    {
+      "platform": "itunes",
+      "url": "https://apps.apple.com/us/app/quikchat/id1234567890"
+    }
+  ],
+  "prefer_related_applications": false,
+  "protocol_handlers": [
+    {
+      "protocol": "web+quikchat",
+      "url": "/?invite=%s"
+    }
+  ],
+  "share_target": {
+    "action": "/share",
+    "method": "POST",
+    "enctype": "multipart/form-data",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url",
+      "files": [
+        {
+          "name": "image",
+          "accept": ["image/*"]
+        }
+      ]
+    }
+  },
+  "handle_links": "preferred",
+  "launch_handler": {
+    "client_mode": "focus-existing"
+  },
+  "file_handlers": [
+    {
+      "action": "/upload",
+      "accept": {
+        "image/*": [".jpg", ".jpeg", ".png", ".gif", ".webp"],
+        "video/*": [".mp4", ".webm", ".mov"]
+      }
+    }
+  ],
+  "permissions": [
+    "camera",
+    "microphone",
+    "notifications",
+    "background-sync",
+    "periodic-background-sync",
+    "clipboard-write"
+  ],
+  "edge_side_panel": {
+    "preferred_width": 480
+  },
+  "display_override": ["window-controls-overlay", "minimal-ui"],
+  "capture_links": "new-client",
+  "isolated_storage": true,
+  "id": "/?source=pwa",
+  "iarc_rating_id": "e58b13d4-1b1e-4b2e-8b1e-4b2e8b1e4b2e",
+  "features": [
+    "cross-origin-isolated",
+    "shared-array-buffer"
+  ],
+  "serviceworker": {
+    "src": "/sw.js",
+    "scope": "/",
+    "use_cache": true,
+    "update_via_cache": "none"
+  },
+  "version": "3.0.0",
+  "author": "QuikChat Team",
+  "dir": "ltr",
+  "scope_extensions": [
+    {
+      "origin": "https://*.quikchat.com"
+    }
+  ]
+    }
