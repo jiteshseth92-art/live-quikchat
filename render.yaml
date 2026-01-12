@@ -1,9 +1,0 @@
-services:
-  - type: web
-    name: live-quikchat
-    env: node
-    region: singapore
-    plan: free
-    buildCommand: "npm install"
-    startCommand: "node server.js"
-    autoDeploy: true
