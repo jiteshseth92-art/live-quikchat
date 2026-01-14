@@ -1,997 +1,1185 @@
-// server.js — COMPLETE PRODUCTION VERSION WITH ALL FEATURES
+/* ========== QUIKCHAT GLOBAL V2 - SERVER.JS ========== */
+/* Version: 2.0.0 | Date: 2024 */
+require('dotenv').config();
 
-const express = require("express");
-const http = require("http");
-const cors = require("cors");
-const { Server } = require("socket.io");
-const admin = require("firebase-admin");
+const express = require('express');
+const http = require('http');
+const socketIo = require('socket.io');
+const cors = require('cors');
+const path = require('path');
+const fs = require('fs');
 
+// Database (using JSON file for simplicity, in production use MongoDB/PostgreSQL)
+const { JSONDatabase } = require('./database');
+
+// ========== SERVER CONFIGURATION ==========
 const app = express();
-app.use(cors());
-app.use(express.json({ limit: '10mb' }));
-app.use(express.static(__dirname + "/public"));
-
 const server = http.createServer(app);
-const io = new Server(server, {
-  cors: { origin: "*" },
-  maxHttpBufferSize: 5e6 // 5MB limit
+const io = socketIo(server, {
+    cors: {
+        origin: "*",
+        methods: ["GET", "POST"],
+        credentials: true
+    },
+    transports: ['websocket', 'polling'],
+    pingTimeout: 60000,
+    pingInterval: 25000
 });
 
 const PORT = process.env.PORT || 3000;
+const HOST = process.env.HOST || '0.0.0.0';
 
-// Initialize Firebase Admin
-try {
-  // You can use environment variable or service account file
-  if (process.env.FIREBASE_SERVICE_ACCOUNT) {
-    admin.initializeApp({
-      credential: admin.credential.cert(
-        JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT)
-      ),
-      databaseURL: "https://quikchat-global-31d48-default-rtdb.firebaseio.com"
+// ========== MIDDLEWARE ==========
+app.use(cors());
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use(express.static('public'));
+
+// ========== DATABASE INITIALIZATION ==========
+const db = new JSONDatabase();
+
+// ========== SOCKET.IO CONNECTION HANDLING ==========
+const onlineUsers = new Map(); // socket.id -> user data
+const userSockets = new Map(); // user.id -> socket.id
+const activeCalls = new Map(); // callId -> call data
+const activeChats = new Map(); // chatId -> chat data
+const userRooms = new Map(); // user.id -> roomId
+
+io.on('connection', (socket) => {
+    console.log(`New connection: ${socket.id}`);
+    
+    // ========== USER MANAGEMENT ==========
+    socket.on('register', async (userData) => {
+        try {
+            console.log(`Registering user: ${userData.username}`);
+            
+            // Validate user data
+            if (!userData.username || !userData.id) {
+                socket.emit('error', { message: 'Invalid user data' });
+                return;
+            }
+            
+            // Check if username exists
+            const existingUser = await db.getUserByUsername(userData.username);
+            if (existingUser && existingUser.id !== userData.id) {
+                socket.emit('error', { message: 'Username already taken' });
+                return;
+            }
+            
+            // Save/update user
+            const user = await db.saveUser({
+                ...userData,
+                socketId: socket.id,
+                isOnline: true,
+                lastSeen: new Date().toISOString(),
+                connectionTime: new Date().toISOString()
+            });
+            
+            // Store in memory maps
+            onlineUsers.set(socket.id, user);
+            userSockets.set(user.id, socket.id);
+            
+            // Join user to their personal room
+            socket.join(`user:${user.id}`);
+            
+            // Join user to country room
+            if (user.country) {
+                socket.join(`country:${user.country}`);
+            }
+            
+            // Join user to gender room
+            if (user.gender) {
+                socket.join(`gender:${user.gender}`);
+            }
+            
+            // Broadcast user online status
+            socket.broadcast.emit('user:online', { user: user });
+            
+            // Send current online users to the new user
+            const onlineUsersList = Array.from(onlineUsers.values())
+                .filter(u => u.id !== user.id)
+                .map(u => ({
+                    id: u.id,
+                    username: u.username,
+                    age: u.age,
+                    gender: u.gender,
+                    country: u.country,
+                    isPremium: u.isPremium,
+                    avatar: u.avatar,
+                    lastSeen: u.lastSeen
+                }));
+            
+            socket.emit('users:list', { users: onlineUsersList });
+            
+            // Send user their data
+            socket.emit('user:registered', { user: user });
+            
+            // Update global stats
+            updateGlobalStats();
+            
+            console.log(`User registered: ${user.username} (${user.id})`);
+        } catch (error) {
+            console.error('Registration error:', error);
+            socket.emit('error', { message: 'Registration failed' });
+        }
     });
-  } else {
-    // For local development with service account file
-    const serviceAccount = require('./serviceAccountKey.json');
-    admin.initializeApp({
-      credential: admin.credential.cert(serviceAccount),
-      databaseURL: "https://quikchat-global-31d48-default-rtdb.firebaseio.com"
+    
+    socket.on('user:update', async (data) => {
+        try {
+            const user = onlineUsers.get(socket.id);
+            if (!user) return;
+            
+            const updatedUser = await db.updateUser(user.id, data);
+            onlineUsers.set(socket.id, updatedUser);
+            
+            // Broadcast update to all connected clients
+            socket.broadcast.emit('user:updated', { user: updatedUser });
+            socket.emit('user:updated', { user: updatedUser });
+        } catch (error) {
+            console.error('User update error:', error);
+        }
     });
-  }
-  console.log("✅ Firebase Admin initialized");
-} catch(e) {
-  console.warn("⚠️ Firebase Admin not initialized - profiles won't persist");
-  console.error(e.message);
-}
+    
+    socket.on('user:typing', (data) => {
+        const { to, isTyping } = data;
+        const receiverSocketId = userSockets.get(to);
+        
+        if (receiverSocketId) {
+            io.to(receiverSocketId).emit('chat:typing', {
+                from: onlineUsers.get(socket.id)?.id,
+                isTyping: isTyping
+            });
+        }
+    });
+    
+    // ========== CHAT MANAGEMENT ==========
+    socket.on('chat:find-partner', async (data) => {
+        try {
+            const currentUser = onlineUsers.get(socket.id);
+            if (!currentUser) return;
+            
+            const { preferences, country } = data;
+            
+            // Find compatible partner
+            const partner = await findCompatiblePartner(currentUser, preferences, country);
+            
+            if (partner) {
+                // Create chat session
+                const chatId = `chat_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+                const chatData = {
+                    id: chatId,
+                    user1: currentUser.id,
+                    user2: partner.id,
+                    type: 'text',
+                    startedAt: new Date().toISOString(),
+                    messages: []
+                };
+                
+                activeChats.set(chatId, chatData);
+                
+                // Notify both users
+                const partnerSocketId = userSockets.get(partner.id);
+                
+                socket.emit('chat:start', {
+                    partner: partner,
+                    type: 'text',
+                    chatId: chatId
+                });
+                
+                if (partnerSocketId) {
+                    io.to(partnerSocketId).emit('chat:start', {
+                        partner: currentUser,
+                        type: 'text',
+                        chatId: chatId
+                    });
+                }
+                
+                console.log(`Chat started: ${currentUser.username} <-> ${partner.username}`);
+            } else {
+                socket.emit('chat:no-partner', { message: 'No suitable partner found' });
+            }
+        } catch (error) {
+            console.error('Find partner error:', error);
+            socket.emit('error', { message: 'Failed to find partner' });
+        }
+    });
+    
+    socket.on('chat:request', (data) => {
+        const { to, type } = data;
+        const sender = onlineUsers.get(socket.id);
+        const receiverSocketId = userSockets.get(to);
+        
+        if (!sender || !receiverSocketId) return;
+        
+        io.to(receiverSocketId).emit('chat:request', {
+            from: sender.id,
+            user: sender,
+            type: type || 'text'
+        });
+    });
+    
+    socket.on('chat:message', (data) => {
+        const { to, message } = data;
+        const sender = onlineUsers.get(socket.id);
+        const receiverSocketId = userSockets.get(to);
+        
+        if (!sender || !receiverSocketId) return;
+        
+        // Save message to database
+        db.saveMessage({
+            ...message,
+            chatId: message.chatId || `chat_${sender.id}_${to}`,
+            delivered: true,
+            deliveredAt: new Date().toISOString()
+        }).catch(console.error);
+        
+        // Forward message to receiver
+        io.to(receiverSocketId).emit('chat:message', {
+            from: sender.id,
+            message: message
+        });
+        
+        // Send delivery confirmation
+        socket.emit('message:delivered', {
+            messageId: message.id,
+            deliveredAt: new Date().toISOString()
+        });
+    });
+    
+    socket.on('chat:file', (data) => {
+        const { to, message } = data;
+        const sender = onlineUsers.get(socket.id);
+        const receiverSocketId = userSockets.get(to);
+        
+        if (!sender || !receiverSocketId) return;
+        
+        // Save file message to database
+        db.saveMessage({
+            ...message,
+            chatId: message.chatId || `chat_${sender.id}_${to}`,
+            type: 'file',
+            delivered: true,
+            deliveredAt: new Date().toISOString()
+        }).catch(console.error);
+        
+        // Forward file message
+        io.to(receiverSocketId).emit('chat:file', {
+            from: sender.id,
+            message: message
+        });
+    });
+    
+    socket.on('chat:end', (data) => {
+        const { to, reason } = data;
+        const sender = onlineUsers.get(socket.id);
+        const receiverSocketId = userSockets.get(to);
+        
+        if (receiverSocketId) {
+            io.to(receiverSocketId).emit('chat:end', {
+                from: sender?.id,
+                reason: reason || 'Partner ended the chat'
+            });
+        }
+        
+        // Clean up chat session
+        activeChats.forEach((chat, chatId) => {
+            if ((chat.user1 === sender?.id && chat.user2 === to) || 
+                (chat.user2 === sender?.id && chat.user1 === to)) {
+                activeChats.delete(chatId);
+            }
+        });
+    });
+    
+    // ========== VIDEO/AUDIO CALL MANAGEMENT ==========
+    socket.on('call:request', (data) => {
+        const { to, offer, user } = data;
+        const sender = onlineUsers.get(socket.id);
+        const receiverSocketId = userSockets.get(to);
+        
+        if (!sender || !receiverSocketId) return;
+        
+        // Create call session
+        const callId = `call_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        const callData = {
+            id: callId,
+            caller: sender.id,
+            callee: to,
+            offer: offer,
+            status: 'ringing',
+            startedAt: new Date().toISOString()
+        };
+        
+        activeCalls.set(callId, callData);
+        
+        // Send call request
+        io.to(receiverSocketId).emit('call:request', {
+            from: sender.id,
+            offer: offer,
+            user: sender,
+            callId: callId
+        });
+        
+        // Set timeout for unanswered call (30 seconds)
+        setTimeout(() => {
+            const call = activeCalls.get(callId);
+            if (call && call.status === 'ringing') {
+                activeCalls.delete(callId);
+                
+                // Notify caller
+                socket.emit('call:timeout', { callId: callId });
+                
+                // Notify callee if still connected
+                if (userSockets.get(to)) {
+                    io.to(userSockets.get(to)).emit('call:timeout', { callId: callId });
+                }
+            }
+        }, 30000);
+    });
+    
+    socket.on('call:accept', (data) => {
+        const { to, answer, callId } = data;
+        const accepter = onlineUsers.get(socket.id);
+        const callerSocketId = userSockets.get(to);
+        
+        if (!accepter || !callerSocketId) return;
+        
+        const call = activeCalls.get(callId);
+        if (!call) return;
+        
+        // Update call status
+        call.status = 'accepted';
+        call.answer = answer;
+        call.acceptedAt = new Date().toISOString();
+        
+        // Send acceptance to caller
+        io.to(callerSocketId).emit('call:accept', {
+            from: accepter.id,
+            answer: answer,
+            callId: callId
+        });
+        
+        // Create a room for the call
+        const roomId = `call:${callId}`;
+        socket.join(roomId);
+        io.to(callerSocketId).join(roomId);
+        
+        userRooms.set(accepter.id, roomId);
+        userRooms.set(to, roomId);
+        
+        console.log(`Call accepted: ${callId}`);
+    });
+    
+    socket.on('call:reject', (data) => {
+        const { to, reason } = data;
+        const rejecter = onlineUsers.get(socket.id);
+        const callerSocketId = userSockets.get(to);
+        
+        if (callerSocketId) {
+            io.to(callerSocketId).emit('call:reject', {
+                from: rejecter?.id,
+                reason: reason || 'Call rejected'
+            });
+        }
+        
+        // Clean up call
+        activeCalls.forEach((call, callId) => {
+            if (call.caller === to && call.callee === rejecter?.id) {
+                activeCalls.delete(callId);
+            }
+        });
+    });
+    
+    socket.on('call:offer', (data) => {
+        const { to, offer } = data;
+        const receiverSocketId = userSockets.get(to);
+        
+        if (receiverSocketId) {
+            io.to(receiverSocketId).emit('call:offer', {
+                from: onlineUsers.get(socket.id)?.id,
+                offer: offer
+            });
+        }
+    });
+    
+    socket.on('call:answer', (data) => {
+        const { to, answer } = data;
+        const receiverSocketId = userSockets.get(to);
+        
+        if (receiverSocketId) {
+            io.to(receiverSocketId).emit('call:answer', {
+                from: onlineUsers.get(socket.id)?.id,
+                answer: answer
+            });
+        }
+    });
+    
+    socket.on('call:ice-candidate', (data) => {
+        const { to, candidate } = data;
+        const receiverSocketId = userSockets.get(to);
+        
+        if (receiverSocketId) {
+            io.to(receiverSocketId).emit('call:ice-candidate', {
+                from: onlineUsers.get(socket.id)?.id,
+                candidate: candidate
+            });
+        }
+    });
+    
+    socket.on('call:end', (data) => {
+        const { to, reason } = data;
+        const sender = onlineUsers.get(socket.id);
+        const receiverSocketId = userSockets.get(to);
+        
+        // Notify receiver
+        if (receiverSocketId) {
+            io.to(receiverSocketId).emit('call:end', {
+                from: sender?.id,
+                reason: reason || 'Call ended'
+            });
+        }
+        
+        // Clean up call
+        activeCalls.forEach((call, callId) => {
+            if ((call.caller === sender?.id && call.callee === to) || 
+                (call.callee === sender?.id && call.caller === to)) {
+                activeCalls.delete(callId);
+                
+                // Leave call room
+                const roomId = `call:${callId}`;
+                if (sender) {
+                    socket.leave(roomId);
+                    userRooms.delete(sender.id);
+                }
+                if (receiverSocketId) {
+                    io.to(receiverSocketId).leave(roomId);
+                    userRooms.delete(to);
+                }
+            }
+        });
+    });
+    
+    socket.on('call:video-toggle', (data) => {
+        const { to, enabled } = data;
+        const receiverSocketId = userSockets.get(to);
+        
+        if (receiverSocketId) {
+            io.to(receiverSocketId).emit('call:video-toggle', {
+                from: onlineUsers.get(socket.id)?.id,
+                enabled: enabled
+            });
+        }
+    });
+    
+    socket.on('call:audio-toggle', (data) => {
+        const { to, enabled } = data;
+        const receiverSocketId = userSockets.get(to);
+        
+        if (receiverSocketId) {
+            io.to(receiverSocketId).emit('call:audio-toggle', {
+                from: onlineUsers.get(socket.id)?.id,
+                enabled: enabled
+            });
+        }
+    });
+    
+    // ========== NOTIFICATIONS ==========
+    socket.on('notification:send', (data) => {
+        const { to, type, message, data: notifData } = data;
+        const sender = onlineUsers.get(socket.id);
+        const receiverSocketId = userSockets.get(to);
+        
+        if (receiverSocketId) {
+            io.to(receiverSocketId).emit('notification', {
+                type: type || 'info',
+                message: message,
+                data: notifData,
+                from: sender?.id,
+                timestamp: new Date().toISOString()
+            });
+        }
+    });
+    
+    // ========== ADMIN & MODERATION ==========
+    socket.on('admin:ban', (data) => {
+        // In production, verify admin privileges
+        const { userId, reason, duration } = data;
+        const admin = onlineUsers.get(socket.id);
+        
+        if (!admin || !admin.isAdmin) return;
+        
+        const userSocketId = userSockets.get(userId);
+        if (userSocketId) {
+            io.to(userSocketId).emit('user:banned', {
+                reason: reason,
+                duration: duration,
+                bannedBy: admin.username
+            });
+            
+            // Disconnect banned user
+            setTimeout(() => {
+                if (userSocketId && io.sockets.sockets.get(userSocketId)) {
+                    io.sockets.sockets.get(userSocketId).disconnect();
+                }
+            }, 5000);
+        }
+    });
+    
+    socket.on('admin:warn', (data) => {
+        const { userId, reason } = data;
+        const admin = onlineUsers.get(socket.id);
+        
+        if (!admin || !admin.isAdmin) return;
+        
+        const userSocketId = userSockets.get(userId);
+        if (userSocketId) {
+            io.to(userSocketId).emit('user:warned', {
+                reason: reason,
+                warnedBy: admin.username
+            });
+        }
+    });
+    
+    // ========== PREMIUM FEATURES ==========
+    socket.on('premium:purchase', async (data) => {
+        try {
+            const { plan, transactionId } = data;
+            const user = onlineUsers.get(socket.id);
+            
+            if (!user) return;
+            
+            // In production, verify payment with payment gateway
+            const expiryDate = new Date();
+            expiryDate.setMonth(expiryDate.getMonth() + (plan === 'yearly' ? 12 : 1));
+            
+            const updatedUser = await db.updateUser(user.id, {
+                isPremium: true,
+                premiumPlan: plan,
+                premiumSince: new Date().toISOString(),
+                premiumExpiry: expiryDate.toISOString(),
+                lastTransactionId: transactionId
+            });
+            
+            // Update memory
+            onlineUsers.set(socket.id, updatedUser);
+            
+            // Notify user
+            socket.emit('premium:activated', {
+                plan: plan,
+                expiry: expiryDate.toISOString()
+            });
+            
+            // Broadcast premium status change
+            socket.broadcast.emit('user:updated', { user: updatedUser });
+            
+            console.log(`Premium purchased: ${user.username} (${plan})`);
+        } catch (error) {
+            console.error('Premium purchase error:', error);
+            socket.emit('error', { message: 'Purchase failed' });
+        }
+    });
+    
+    socket.on('gift:send', (data) => {
+        const { to, giftId, giftType } = data;
+        const sender = onlineUsers.get(socket.id);
+        const receiverSocketId = userSockets.get(to);
+        
+        if (!sender || !receiverSocketId) return;
+        
+        // Check if sender has enough coins (in production)
+        const gift = {
+            id: giftId,
+            type: giftType,
+            from: sender.id,
+            fromName: sender.username,
+            sentAt: new Date().toISOString(),
+            value: 10 // Gift value in coins
+        };
+        
+        // Save gift to database
+        db.saveGift(gift).catch(console.error);
+        
+        // Send gift notification
+        io.to(receiverSocketId).emit('gift:received', { gift: gift });
+        
+        // Deduct coins from sender (in production)
+        socket.emit('coins:deducted', {
+            amount: 10,
+            balance: 100 // Mock balance
+        });
+    });
+    
+    // ========== DISCONNECTION HANDLING ==========
+    socket.on('disconnect', () => {
+        console.log(`Disconnected: ${socket.id}`);
+        
+        const user = onlineUsers.get(socket.id);
+        if (user) {
+            // Update user status
+            user.isOnline = false;
+            user.lastSeen = new Date().toISOString();
+            
+            // Save to database
+            db.updateUser(user.id, {
+                isOnline: false,
+                lastSeen: user.lastSeen
+            }).catch(console.error);
+            
+            // Remove from memory maps
+            onlineUsers.delete(socket.id);
+            userSockets.delete(user.id);
+            
+            // Broadcast user offline status
+            socket.broadcast.emit('user:offline', { userId: user.id });
+            
+            // End active calls
+            activeCalls.forEach((call, callId) => {
+                if (call.caller === user.id || call.callee === user.id) {
+                    const otherUserId = call.caller === user.id ? call.callee : call.caller;
+                    const otherSocketId = userSockets.get(otherUserId);
+                    
+                    if (otherSocketId) {
+                        io.to(otherSocketId).emit('call:end', {
+                            from: user.id,
+                            reason: 'User disconnected'
+                        });
+                    }
+                    
+                    activeCalls.delete(callId);
+                }
+            });
+            
+            // End active chats
+            activeChats.forEach((chat, chatId) => {
+                if (chat.user1 === user.id || chat.user2 === user.id) {
+                    const otherUserId = chat.user1 === user.id ? chat.user2 : chat.user1;
+                    const otherSocketId = userSockets.get(otherUserId);
+                    
+                    if (otherSocketId) {
+                        io.to(otherSocketId).emit('chat:end', {
+                            from: user.id,
+                            reason: 'User disconnected'
+                        });
+                    }
+                    
+                    activeChats.delete(chatId);
+                }
+            });
+            
+            // Leave rooms
+            const roomId = userRooms.get(user.id);
+            if (roomId) {
+                socket.leave(roomId);
+                userRooms.delete(user.id);
+            }
+            
+            // Update global stats
+            updateGlobalStats();
+            
+            console.log(`User went offline: ${user.username} (${user.id})`);
+        }
+    });
+    
+    // ========== ERROR HANDLING ==========
+    socket.on('error', (error) => {
+        console.error('Socket error:', error);
+    });
+    
+    // ========== HEALTH CHECK ==========
+    socket.on('ping', () => {
+        socket.emit('pong', { timestamp: Date.now() });
+    });
+});
 
-const db = admin.database();
-
-/* ================== GLOBAL STATE ================== */
-let waiting = []; // { id, socket, meta }
-const activeRooms = new Map(); // roomId -> { users, isPrivate, startTime, coinTimer }
-const earningSessions = new Map(); // userId -> { startTime, rate, total, socketId, gender }
-
-/* ================== UTILITIES ================== */
-function cleanWaiting() {
-  waiting = waiting.filter(w => w.socket && w.socket.connected);
-}
-
-function broadcastAdminStats() {
-  const connectedCount = io.engine.clientsCount || 0;
-  const inCall = Array.from(activeRooms.values()).reduce((sum, room) => sum + room.users.length, 0);
-  
-  io.emit("admin-stats", {
-    connected: connectedCount,
-    waiting: waiting.length,
-    inCall: inCall
-  });
-}
-
-setInterval(broadcastAdminStats, 2000);
-
-/* ================== FIREBASE HELPERS ================== */
-async function getUserProfile(userId) {
-  try {
-    const snapshot = await db.ref(`users/${userId}`).once('value');
-    return snapshot.val();
-  } catch(e) {
+// ========== HELPER FUNCTIONS ==========
+async function findCompatiblePartner(currentUser, preferences, countryFilter) {
+    const onlineUsersList = Array.from(onlineUsers.values());
+    
+    // Filter out current user
+    let candidates = onlineUsersList.filter(user => user.id !== currentUser.id);
+    
+    // Apply gender preference
+    if (preferences && preferences !== 'both') {
+        candidates = candidates.filter(user => user.gender === preferences);
+    }
+    
+    // Apply country filter
+    if (countryFilter) {
+        candidates = candidates.filter(user => user.country === countryFilter);
+    }
+    
+    // Filter out users already in calls
+    candidates = candidates.filter(user => {
+        let isInCall = false;
+        activeCalls.forEach(call => {
+            if (call.caller === user.id || call.callee === user.id) {
+                isInCall = true;
+            }
+        });
+        return !isInCall;
+    });
+    
+    // Filter out users already in active chats
+    candidates = candidates.filter(user => {
+        let isInChat = false;
+        activeChats.forEach(chat => {
+            if (chat.user1 === user.id || chat.user2 === user.id) {
+                isInChat = true;
+            }
+        });
+        return !isInChat;
+    });
+    
+    // Prioritize premium users for premium requests
+    if (preferences === 'premium') {
+        candidates = candidates.filter(user => user.isPremium === true);
+    }
+    
+    // If no candidates, relax filters
+    if (candidates.length === 0 && countryFilter) {
+        // Remove country filter
+        candidates = onlineUsersList.filter(user => 
+            user.id !== currentUser.id && 
+            (!preferences || preferences === 'both' || user.gender === preferences)
+        );
+    }
+    
+    // If still no candidates, remove gender filter
+    if (candidates.length === 0 && preferences && preferences !== 'both') {
+        candidates = onlineUsersList.filter(user => user.id !== currentUser.id);
+    }
+    
+    // Random selection from candidates
+    if (candidates.length > 0) {
+        return candidates[Math.floor(Math.random() * candidates.length)];
+    }
+    
     return null;
-  }
 }
 
-async function updateUserCoins(userId, amount) {
-  try {
-    const ref = db.ref(`users/${userId}/coins`);
-    await ref.transaction((current) => {
-      return (current || 500) + amount;
-    });
-  } catch(e) {
-    console.error("Coin update error:", e);
-  }
-}
-
-async function saveUserProfile(userId, data) {
-  try {
-    await db.ref(`users/${userId}`).update({
-      ...data,
-      updatedAt: Date.now()
-    });
-  } catch(e) {
-    console.error("Profile save error:", e);
-  }
-}
-
-async function isPremiumUser(userId) {
-  try {
-    const snapshot = await db.ref(`users/${userId}/premium`).once('value');
-    const premiumData = snapshot.val();
-    if (!premiumData) return false;
-    
-    // Check if premium is active (not expired)
-    if (premiumData.expiresAt && premiumData.expiresAt > Date.now()) {
-      return true;
-    }
-    return false;
-  } catch(e) {
-    return false;
-  }
-}
-
-async function registerUser(userId, userData) {
-  try {
-    await db.ref(`users/${userId}`).set({
-      ...userData,
-      coins: 500,
-      totalEarnings: 0,
-      totalMinutes: 0,
-      availableBalance: 0,
-      isVerified: false,
-      isAgeVerified: false,
-      createdAt: Date.now(),
-      updatedAt: Date.now()
-    });
-    return true;
-  } catch(e) {
-    console.error("Registration error:", e);
-    return false;
-  }
-}
-
-/* ================== AGE VERIFICATION (AI Mock) ================== */
-async function verifyAgeWithAI(imageData) {
-  if (!imageData || imageData.length > 5_000_000) return false;
-
-  // Simulate AI processing delay
-  await new Promise(r => setTimeout(r, 1500));
-
-  // TODO: Replace with real AI API (Amazon Rekognition, Face++, etc.)
-  // For demo: 90% approval rate
-  const isAdult = Math.random() > 0.1;
-
-  return isAdult;
-}
-
-/* ================== EARNING SYSTEM ================== */
-function startEarningSession(socket, data) {
-  const { userId, ratePerMinute, gender } = data;
-  
-  earningSessions.set(userId, {
-    startTime: Date.now(),
-    rate: ratePerMinute,
-    total: 0,
-    socketId: socket.id,
-    gender: gender
-  });
-  
-  console.log(`💰 Earning session started for ${userId} (${gender}) at $${ratePerMinute}/min`);
-}
-
-function stopEarningSession(userId) {
-  const session = earningSessions.get(userId);
-  if (!session) return;
-  
-  const minutes = Math.floor((Date.now() - session.startTime) / 60000);
-  const earnings = minutes * session.rate;
-  
-  if (earnings > 0) {
-    // Calculate commission (20%)
-    const commission = earnings * 0.2;
-    const userPayout = earnings * 0.8;
-    
-    // Update user's total
-    updateUserEarnings(userId, earnings, minutes, userPayout);
-    
-    // Save transaction
-    saveEarningTransaction(userId, earnings, commission, minutes, session.gender);
-    
-    // Notify user
-    const socket = io.sockets.sockets.get(session.socketId);
-    if (socket) {
-      socket.emit('earningCredited', {
-        amount: userPayout,
-        minutes: minutes,
-        commission: commission
-      });
-    }
-  }
-  
-  earningSessions.delete(userId);
-  console.log(`💰 Earning session ended for ${userId}: $${earnings} earned`);
-}
-
-async function updateUserEarnings(userId, earnings, minutes, payout) {
-  try {
-    await db.ref(`users/${userId}`).update({
-      totalEarnings: admin.database.ServerValue.increment(earnings),
-      totalMinutes: admin.database.ServerValue.increment(minutes),
-      availableBalance: admin.database.ServerValue.increment(payout)
-    });
-  } catch(e) {
-    console.error("Update earnings error:", e);
-  }
-}
-
-async function saveEarningTransaction(userId, earnings, commission, minutes, gender) {
-  try {
-    const transactionId = `earn_${Date.now()}`;
-    await db.ref(`transactions/${transactionId}`).set({
-      userId: userId,
-      type: 'earning',
-      amount: earnings,
-      commission: commission,
-      userPayout: earnings - commission,
-      minutes: minutes,
-      gender: gender,
-      timestamp: Date.now(),
-      status: 'completed'
-    });
-  } catch(e) {
-    console.error("Save transaction error:", e);
-  }
-}
-
-/* ================== GLOBAL STATISTICS ================== */
-async function getGlobalStats() {
-  try {
-    // Get online users count
-    const connectedCount = io.engine.clientsCount || 0;
-    
-    // Get gender distribution from waiting list and earning sessions
-    const maleCount = waiting.filter(w => w.meta?.gender === 'male').length;
-    const femaleCount = waiting.filter(w => w.meta?.gender === 'female').length;
-    const shemaleCount = waiting.filter(w => w.meta?.gender === 'shemale').length;
-    
-    // Get active calls
-    const inCall = Array.from(activeRooms.values()).reduce((sum, room) => sum + room.users.length, 0);
-    
-    // Get earning users count
-    const earningUsers = Array.from(earningSessions.keys()).length;
-    
-    return {
-      total: connectedCount,
-      male: maleCount,
-      female: femaleCount,
-      shemale: shemaleCount,
-      activeCalls: activeRooms.size,
-      earningUsers: earningUsers
+function updateGlobalStats() {
+    const stats = {
+        online: onlineUsers.size,
+        activeCalls: activeCalls.size,
+        activeChats: activeChats.size,
+        timestamp: new Date().toISOString()
     };
-  } catch(e) {
-    console.error("Stats error:", e);
-    return { total: 0, male: 0, female: 0, shemale: 0, activeCalls: 0, earningUsers: 0 };
-  }
+    
+    // Broadcast to all connected clients
+    io.emit('stats:update', stats);
 }
 
-async function getCountryStats() {
-  try {
-    const countryStats = {};
-    
-    // Count users by country from waiting list
-    waiting.forEach(w => {
-      if (w.meta?.country && w.meta.country !== 'any') {
-        countryStats[w.meta.country] = (countryStats[w.meta.country] || 0) + 1;
-      }
+// ========== EXPRESS ROUTES ==========
+// Health check endpoint
+app.get('/health', (req, res) => {
+    res.json({
+        status: 'ok',
+        timestamp: new Date().toISOString(),
+        onlineUsers: onlineUsers.size,
+        activeCalls: activeCalls.size,
+        activeChats: activeChats.size,
+        memoryUsage: process.memoryUsage()
     });
+});
+
+// Get online users
+app.get('/api/users/online', (req, res) => {
+    const users = Array.from(onlineUsers.values()).map(user => ({
+        id: user.id,
+        username: user.username,
+        age: user.age,
+        gender: user.gender,
+        country: user.country,
+        isPremium: user.isPremium,
+        avatar: user.avatar,
+        lastSeen: user.lastSeen
+    }));
     
-    return countryStats;
-  } catch(e) {
-    return {};
-  }
-}
+    res.json({ users: users, count: users.length });
+});
 
-// Automatic stats broadcast
-setInterval(async () => {
-  try {
-    const stats = await getGlobalStats();
-    io.emit("globalStats", stats);
-    
-    const countryStats = await getCountryStats();
-    io.emit("countryStats", countryStats);
-  } catch(e) {
-    console.error("Stats broadcast error:", e);
-  }
-}, 10000); // Every 10 seconds
-
-/* ================== COIN DEDUCTION SYSTEM ================== */
-function startCoinDeduction(roomId, userId1, userId2, gender1, gender2) {
-  const room = activeRooms.get(roomId);
-  if (!room || !room.isPrivate) return;
-
-  room.coinTimer = setInterval(async () => {
+// Get user by ID
+app.get('/api/users/:id', async (req, res) => {
     try {
-      // Check if users are premium
-      const isPremium1 = await isPremiumUser(userId1);
-      const isPremium2 = await isPremiumUser(userId2);
-      
-      // Check earning mode for female/shemale users
-      const isEarning1 = earningSessions.has(userId1);
-      const isEarning2 = earningSessions.has(userId2);
-
-      // Handle user1 (deduct or earn)
-      if (!isEarning1 && !isPremium1) {
-        // Regular user pays
-        await updateUserCoins(userId1, -10);
-        const socket1 = io.sockets.sockets.get(userId1);
-        if (socket1) {
-          socket1.coins = (socket1.coins || 0) - 10;
-          socket1.emit("coinUpdate", socket1.coins);
-          
-          // End call if coins run out
-          if (socket1.coins < 10) {
-            socket1.emit("insufficientCoins");
-            endRoom(roomId);
-          }
-        }
-      } else if (isEarning1) {
-        // Female/shemale user earns
-        const session = earningSessions.get(userId1);
-        if (session) {
-          session.total += session.rate; // Add per-minute earnings
-          
-          const socket1 = io.sockets.sockets.get(userId1);
-          if (socket1) {
-            socket1.emit("earningUpdate", {
-              total: session.total,
-              minutes: Math.floor((Date.now() - session.startTime) / 60000)
-            });
-          }
-        }
-      }
-
-      // Handle user2 (deduct or earn)
-      if (!isEarning2 && !isPremium2) {
-        // Regular user pays
-        await updateUserCoins(userId2, -10);
-        const socket2 = io.sockets.sockets.get(userId2);
-        if (socket2) {
-          socket2.coins = (socket2.coins || 0) - 10;
-          socket2.emit("coinUpdate", socket2.coins);
-          
-          if (socket2.coins < 10) {
-            socket2.emit("insufficientCoins");
-            endRoom(roomId);
-          }
-        }
-      } else if (isEarning2) {
-        // Female/shemale user earns
-        const session = earningSessions.get(userId2);
-        if (session) {
-          session.total += session.rate; // Add per-minute earnings
-          
-          const socket2 = io.sockets.sockets.get(userId2);
-          if (socket2) {
-            socket2.emit("earningUpdate", {
-              total: session.total,
-              minutes: Math.floor((Date.now() - session.startTime) / 60000)
-            });
-          }
-        }
-      }
-    } catch(e) {
-      console.error("Coin deduction/earning error:", e);
-    }
-  }, 60000); // Every 60 seconds (1 minute)
-}
-
-function stopCoinDeduction(roomId) {
-  const room = activeRooms.get(roomId);
-  if (room && room.coinTimer) {
-    clearInterval(room.coinTimer);
-    room.coinTimer = null;
-  }
-}
-
-function endRoom(roomId) {
-  const room = activeRooms.get(roomId);
-  if (!room) return;
-
-  stopCoinDeduction(roomId);
-  
-  // Stop earning sessions for users in this room
-  room.users.forEach(userId => {
-    if (earningSessions.has(userId)) {
-      stopEarningSession(userId);
-    }
-  });
-  
-  // Notify both users
-  room.users.forEach(userId => {
-    const socket = io.sockets.sockets.get(userId);
-    if (socket) {
-      socket.emit("peer-left");
-      socket.leave(roomId);
-      socket.room = null;
-    }
-  });
-
-  activeRooms.delete(roomId);
-  broadcastAdminStats();
-}
-
-/* ================== MATCHING CORE ================== */
-function attemptMatch(socket, opts) {
-  try {
-    cleanWaiting();
-
-    socket.meta = {
-      gender: opts.gender || "any",
-      country: opts.country || "any",
-      wantPrivate: !!opts.wantPrivate,
-      name: opts.name || null,
-      userId: socket.id,
-      isEarning: opts.isEarning || false
-    };
-
-    // Block private without verification or coins
-    if (socket.meta.wantPrivate && !socket.isAgeVerified) {
-      socket.emit("ageRejected", { reason: "Age verification required" });
-      return;
-    }
-
-    if (socket.meta.wantPrivate && socket.coins < 100 && !socket.isPremium && !socket.meta.isEarning) {
-      socket.emit("insufficientCoins", { required: 100, current: socket.coins });
-      return;
-    }
-
-    // Remove old entry
-    waiting = waiting.filter(w => w.id !== socket.id);
-
-    const matchIndex = waiting.findIndex(w => {
-      if (!w.socket?.connected) return false;
-
-      const genderOK =
-        socket.meta.gender === "any" ||
-        w.meta.gender === "any" ||
-        socket.meta.gender === w.meta.gender;
-
-      const countryOK =
-        socket.meta.country === "any" ||
-        w.meta.country === "any" ||
-        socket.meta.country === w.meta.country;
-
-      const privateOK = socket.meta.wantPrivate === w.meta.wantPrivate;
-      
-      // Earning users should match with paying users
-      const earningOK = !(socket.meta.isEarning && w.meta.isEarning);
-
-      return genderOK && countryOK && privateOK && earningOK;
-    });
-
-    if (matchIndex !== -1) {
-      const partner = waiting.splice(matchIndex, 1)[0];
-
-      const room =
-        "r_" +
-        Date.now().toString(36) +
-        "_" +
-        Math.random().toString(36).slice(2, 6);
-
-      socket.join(room);
-      partner.socket.join(room);
-
-      socket.room = room;
-      partner.socket.room = room;
-
-      // Create room tracking
-      activeRooms.set(room, {
-        users: [socket.id, partner.socket.id],
-        isPrivate: socket.meta.wantPrivate,
-        startTime: Date.now(),
-        coinTimer: null,
-        user1Gender: socket.meta.gender,
-        user2Gender: partner.meta.gender,
-        user1Earning: socket.meta.isEarning,
-        user2Earning: partner.meta.isEarning
-      });
-
-      // Deduct initial coins for private calls (only from paying users)
-      if (socket.meta.wantPrivate) {
-        if (!socket.meta.isEarning && !socket.isPremium) {
-          socket.coins -= 100;
-          socket.emit("coinUpdate", socket.coins);
-          updateUserCoins(socket.id, -100);
+        const user = await db.getUser(req.params.id);
+        if (!user) {
+            return res.status(404).json({ error: 'User not found' });
         }
         
-        if (!partner.meta.isEarning && !partner.socket.isPremium) {
-          partner.socket.coins -= 100;
-          partner.socket.emit("coinUpdate", partner.socket.coins);
-          updateUserCoins(partner.socket.id, -100);
-        }
-        
-        // Start per-minute deduction/earning
-        startCoinDeduction(room, socket.id, partner.socket.id, socket.meta.gender, partner.meta.gender);
-      }
-
-      // Send match details
-      socket.emit("partnerFound", {
-        room,
-        initiator: true,
-        partnerMeta: partner.meta,
-        isPrivate: socket.meta.wantPrivate,
-        partnerEarning: partner.meta.isEarning
-      });
-
-      partner.socket.emit("partnerFound", {
-        room,
-        initiator: false,
-        partnerMeta: socket.meta,
-        isPrivate: socket.meta.wantPrivate,
-        partnerEarning: socket.meta.isEarning
-      });
-
-      console.log(`[MATCH] ${socket.id} <-> ${partner.id} (Private: ${socket.meta.wantPrivate}, Earning1: ${socket.meta.isEarning}, Earning2: ${partner.meta.isEarning})`);
-    } else {
-      waiting.push({ id: socket.id, socket, meta: socket.meta });
-      socket.emit("waiting");
+        // Remove sensitive data
+        const { password, ...safeUser } = user;
+        res.json(safeUser);
+    } catch (error) {
+        res.status(500).json({ error: 'Server error' });
     }
+});
 
-    broadcastAdminStats();
-  } catch (e) {
-    console.error("attemptMatch error:", e);
-  }
+// Search users
+app.get('/api/users/search/:query', async (req, res) => {
+    try {
+        const users = await db.searchUsers(req.params.query);
+        res.json({ users: users });
+    } catch (error) {
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// Get chat history
+app.get('/api/chats/:userId', async (req, res) => {
+    try {
+        const chats = await db.getUserChats(req.params.userId);
+        res.json({ chats: chats });
+    } catch (error) {
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// Get messages for a chat
+app.get('/api/messages/:chatId', async (req, res) => {
+    try {
+        const messages = await db.getChatMessages(req.params.chatId);
+        res.json({ messages: messages });
+    } catch (error) {
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+// File upload endpoint (for chat files)
+app.post('/api/upload', (req, res) => {
+    // In production, use multer or similar for file uploads
+    res.json({ message: 'Upload endpoint - implement file handling' });
+});
+
+// Report user
+app.post('/api/report', async (req, res) => {
+    try {
+        const { reporterId, reportedId, reason, details } = req.body;
+        
+        const report = {
+            id: `report_${Date.now()}`,
+            reporterId,
+            reportedId,
+            reason,
+            details,
+            status: 'pending',
+            createdAt: new Date().toISOString()
+        };
+        
+        await db.saveReport(report);
+        res.json({ success: true, reportId: report.id });
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to submit report' });
+    }
+});
+
+// Admin endpoints (protected)
+app.get('/api/admin/stats', async (req, res) => {
+    // In production, add authentication middleware
+    const stats = {
+        totalUsers: await db.getTotalUsers(),
+        totalMessages: await db.getTotalMessages(),
+        totalCalls: await db.getTotalCalls(),
+        premiumUsers: await db.getPremiumUsersCount(),
+        reports: await db.getPendingReports(),
+        timestamp: new Date().toISOString()
+    };
+    
+    res.json(stats);
+});
+
+// Serve static files
+app.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// ========== DATABASE BACKUP SCHEDULER ==========
+function scheduleBackup() {
+    // Backup every 6 hours
+    setInterval(async () => {
+        try {
+            await db.backup();
+            console.log('Database backup completed');
+        } catch (error) {
+            console.error('Backup failed:', error);
+        }
+    }, 6 * 60 * 60 * 1000);
 }
 
-/* ================== SOCKET HANDLERS ================== */
-io.on("connection", async (socket) => {
-  console.log("Connected:", socket.id);
-
-  // Load user profile from Firebase
-  const userProfile = await getUserProfile(socket.id);
-  
-  socket.coins = userProfile?.coins || 500;
-  socket.isAgeVerified = userProfile?.isAgeVerified || false;
-  socket.lastVerify = 0;
-  socket.isPremium = await isPremiumUser(socket.id);
-  socket.userGender = userProfile?.gender || 'unknown';
-
-  // Send initial data
-  socket.emit("profileLoaded", {
-    coins: socket.coins,
-    premium: socket.isPremium,
-    profile: userProfile,
-    gender: socket.userGender
-  });
-
-  // Send immediate stats
-  socket.emit("globalStats", await getGlobalStats());
-  socket.emit("countryStats", await getCountryStats());
-
-  /* ---------- USER REGISTRATION ---------- */
-  socket.on("registerUser", async (userData) => {
-    try {
-      const success = await registerUser(socket.id, userData);
-      if (success) {
-        socket.userGender = userData.gender;
-        socket.emit("registrationResult", { 
-          success: true,
-          message: "Registration successful!"
-        });
-      } else {
-        socket.emit("registrationResult", { 
-          success: false,
-          message: "Registration failed"
-        });
-      }
-    } catch(e) {
-      socket.emit("registrationResult", { 
-        success: false,
-        message: e.message
-      });
-    }
-  });
-
-  /* ---------- PROFILE MANAGEMENT ---------- */
-  socket.on("saveProfile", async (data) => {
-    try {
-      await saveUserProfile(socket.id, {
-        name: data.name,
-        bio: data.bio,
-        photo: data.photo,
-        gender: data.gender,
-        country: data.country,
-        age: data.age
-      });
-      socket.emit("profileSaved", { success: true });
-    } catch(e) {
-      socket.emit("profileSaved", { success: false, error: e.message });
-    }
-  });
-
-  socket.on("updateProfile", async (data) => {
-    try {
-      await db.ref(`users/${socket.id}`).update({
-        ...data,
-        updatedAt: Date.now()
-      });
-      socket.emit("profileUpdated", { success: true });
-    } catch(e) {
-      socket.emit("profileUpdated", { success: false, error: e.message });
-    }
-  });
-
-  socket.on("getProfile", async () => {
-    const profile = await getUserProfile(socket.id);
-    socket.emit("profileLoaded", { profile, coins: socket.coins, premium: socket.isPremium });
-  });
-
-  /* ---------- PUBLIC MATCH ---------- */
-  socket.on("findPartner", opts => {
-    attemptMatch(socket, opts || {});
-  });
-
-  /* ---------- PRIVATE MATCH + AGE VERIFY ---------- */
-  socket.on("verifyAgeAndFindPartner", async opts => {
-    const now = Date.now();
-
-    // Rate limit (30 sec)
-    if (socket.lastVerify && now - socket.lastVerify < 30000) {
-      socket.emit("ageRejected", { reason: "Please wait 30 seconds before retrying" });
-      return;
-    }
-    socket.lastVerify = now;
-
-    // Coins check (skip for earning users)
-    const isEarningUser = ['female', 'shemale'].includes(socket.userGender) && opts.isEarning;
-    
-    if (socket.coins < 100 && !socket.isPremium && !isEarningUser) {
-      socket.emit("insufficientCoins", { required: 100, current: socket.coins });
-      return;
-    }
-
-    // Age verification for private calls
-    const verified = await verifyAgeWithAI(opts.image);
-    if (!verified) {
-      socket.emit("ageRejected", { reason: "Age verification failed. You must be 18+" });
-      return;
-    }
-
-    // Success - mark as age verified
-    socket.isAgeVerified = true;
-    await saveUserProfile(socket.id, { isAgeVerified: true });
-    
-    socket.emit("verificationSuccessful");
-    
-    // Start earning session if applicable
-    if (isEarningUser) {
-      const ratePerMinute = socket.userGender === 'female' ? 0.10 : 0.12;
-      startEarningSession(socket, {
-        userId: socket.id,
-        ratePerMinute: ratePerMinute,
-        gender: socket.userGender
-      });
-    }
-    
-    attemptMatch(socket, { 
-      ...opts, 
-      wantPrivate: true,
-      isEarning: isEarningUser
-    });
-  });
-
-  /* ---------- EARNING SYSTEM ---------- */
-  socket.on("startEarningMode", (data) => {
-    if (['female', 'shemale'].includes(socket.userGender)) {
-      const ratePerMinute = socket.userGender === 'female' ? 0.10 : 0.12;
-      startEarningSession(socket, {
-        userId: socket.id,
-        ratePerMinute: ratePerMinute,
-        gender: socket.userGender
-      });
-      socket.emit("earningModeStarted", { rate: ratePerMinute });
-    } else {
-      socket.emit("earningError", { message: "Earning mode only available for female/shemale users" });
-    }
-  });
-  
-  socket.on("stopEarningMode", (data) => {
-    stopEarningSession(socket.id);
-    socket.emit("earningModeStopped");
-  });
-  
-  socket.on("earningUpdate", async (data) => {
-    // Update session data
-    const session = earningSessions.get(socket.id);
-    if (session) {
-      session.total = data.earnings || session.total;
-    }
-  });
-
-  socket.on("getEarnings", async () => {
-    try {
-      const profile = await getUserProfile(socket.id);
-      socket.emit("earningsData", {
-        totalEarnings: profile?.totalEarnings || 0,
-        totalMinutes: profile?.totalMinutes || 0,
-        availableBalance: profile?.availableBalance || 0
-      });
-    } catch(e) {
-      socket.emit("earningsData", {
-        totalEarnings: 0,
-        totalMinutes: 0,
-        availableBalance: 0
-      });
-    }
-  });
-
-  socket.on("requestPayout", async () => {
-    try {
-      const profile = await getUserProfile(socket.id);
-      const availableBalance = profile?.availableBalance || 0;
-      
-      if (availableBalance < 5) {
-        socket.emit("payoutError", { 
-          message: `Minimum payout is $5. Your balance: $${availableBalance.toFixed(2)}` 
-        });
-        return;
-      }
-      
-      // Create payout request
-      const payoutId = `payout_${Date.now()}`;
-      await db.ref(`payouts/${payoutId}`).set({
-        userId: socket.id,
-        amount: availableBalance,
-        requestedAt: Date.now(),
-        status: 'pending',
-        paymentMethod: 'paypal' // Default
-      });
-      
-      // Reset user's balance
-      await db.ref(`users/${socket.id}`).update({
-        availableBalance: 0
-      });
-      
-      socket.emit("payoutRequested", { 
-        success: true,
-        amount: availableBalance,
-        payoutId: payoutId
-      });
-      
-    } catch(e) {
-      socket.emit("payoutError", { message: e.message });
-    }
-  });
-
-  /* ---------- STATISTICS ---------- */
-  socket.on("getGlobalStats", async () => {
-    const stats = await getGlobalStats();
-    socket.emit("globalStats", stats);
-  });
-  
-  socket.on("getCountryStats", async () => {
-    const stats = await getCountryStats();
-    socket.emit("countryStats", stats);
-  });
-
-  /* ---------- SIGNALING ---------- */
-  socket.on("offer", p => {
-    if (socket.room) socket.to(socket.room).emit("offer", p);
-  });
-
-  socket.on("answer", p => {
-    if (socket.room) socket.to(socket.room).emit("answer", p);
-  });
-
-  socket.on("candidate", c => {
-    if (socket.room) socket.to(socket.room).emit("candidate", c);
-  });
-
-  /* ---------- CHAT / MEDIA ---------- */
-  socket.on("chat", d => socket.room && socket.to(socket.room).emit("chat", d));
-  socket.on("image", d => socket.room && socket.to(socket.room).emit("image", d));
-  socket.on("sticker", d => socket.room && socket.to(socket.room).emit("sticker", d));
-  socket.on("audio", d => socket.room && socket.to(socket.room).emit("audio", d));
-
-  /* ---------- WATCH AD (REWARD) ---------- */
-  socket.on("watchedAd", async () => {
-    socket.coins += 20;
-    await updateUserCoins(socket.id, 20);
-    socket.emit("coinUpdate", socket.coins);
-  });
-
-  /* ---------- PREMIUM PURCHASE ---------- */
-  socket.on("purchasePremium", async (data) => {
-    try {
-      // Verify payment with your payment gateway
-      // This is a mock implementation
-      const premiumExpires = Date.now() + (30 * 24 * 60 * 60 * 1000); // 30 days
-      
-      await db.ref(`users/${socket.id}/premium`).set({
-        purchasedAt: Date.now(),
-        expiresAt: premiumExpires,
-        plan: data.plan || 'monthly'
-      });
-      
-      socket.isPremium = true;
-      socket.emit("premiumPurchased", {
-        success: true,
-        expiresAt: premiumExpires
-      });
-      
-    } catch(e) {
-      socket.emit("premiumPurchased", {
-        success: false,
-        error: e.message
-      });
-    }
-  });
-
-  /* ---------- REPORT ---------- */
-  socket.on("report", r => {
-    console.log("[REPORT]", {
-      from: socket.id,
-      room: socket.room,
-      reason: r.reason,
-      time: Date.now()
-    });
-    
-    // Save report to Firebase
-    if (socket.room) {
-      db.ref(`reports/${Date.now()}`).set({
-        reporter: socket.id,
-        room: socket.room,
-        reason: r.reason,
-        timestamp: Date.now()
-      }).catch(() => {});
-    }
-  });
-
-  /* ---------- LEAVE ---------- */
-  socket.on("leave", () => {
-    waiting = waiting.filter(w => w.id !== socket.id);
-    if (socket.room) {
-      stopCoinDeduction(socket.room);
-      
-      // Stop earning session if active
-      if (earningSessions.has(socket.id)) {
-        stopEarningSession(socket.id);
-      }
-      
-      socket.to(socket.room).emit("peer-left");
-      socket.leave(socket.room);
-      
-      const room = activeRooms.get(socket.room);
-      if (room) {
-        room.users = room.users.filter(id => id !== socket.id);
-        if (room.users.length === 0) {
-          activeRooms.delete(socket.room);
+// ========== CLEANUP OLD DATA ==========
+function cleanupOldData() {
+    // Run every hour
+    setInterval(async () => {
+        try {
+            // Clean up old inactive chats
+            const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+            activeChats.forEach((chat, chatId) => {
+                if (new Date(chat.startedAt) < twentyFourHoursAgo) {
+                    activeChats.delete(chatId);
+                }
+            });
+            
+            // Clean up old call records
+            activeCalls.forEach((call, callId) => {
+                if (new Date(call.startedAt) < twentyFourHoursAgo) {
+                    activeCalls.delete(callId);
+                }
+            });
+            
+            console.log('Cleaned up old data');
+        } catch (error) {
+            console.error('Cleanup error:', error);
         }
-      }
-      
-      socket.room = null;
-    }
-    broadcastAdminStats();
-  });
+    }, 60 * 60 * 1000);
+}
 
-  /* ---------- DISCONNECT ---------- */
-  socket.on("disconnect", () => {
-    waiting = waiting.filter(w => w.id !== socket.id);
+// ========== START SERVER ==========
+server.listen(PORT, HOST, () => {
+    console.log(`
+    ╔═══════════════════════════════════════════════╗
+    ║      QUIKCHAT GLOBAL V2 SERVER STARTED       ║
+    ║                                               ║
+    ║     🚀 Server running on: ${HOST}:${PORT}    ║
+    ║     📡 Socket.IO ready for connections       ║
+    ║     🗄️  Database initialized                 ║
+    ║     ⏰ Scheduled tasks started                ║
+    ║                                               ║
+    ╚═══════════════════════════════════════════════╝
+    `);
     
-    // Stop earning session
-    if (earningSessions.has(socket.id)) {
-      stopEarningSession(socket.id);
+    // Start scheduled tasks
+    scheduleBackup();
+    cleanupOldData();
+    
+    // Initial stats update
+    updateGlobalStats();
+    
+    // Update stats every 30 seconds
+    setInterval(updateGlobalStats, 30000);
+});
+
+// ========== GRACEFUL SHUTDOWN ==========
+process.on('SIGTERM', gracefulShutdown);
+process.on('SIGINT', gracefulShutdown);
+
+function gracefulShutdown() {
+    console.log('Shutting down gracefully...');
+    
+    // Save all online users as offline
+    onlineUsers.forEach(async (user) => {
+        await db.updateUser(user.id, {
+            isOnline: false,
+            lastSeen: new Date().toISOString()
+        });
+    });
+    
+    // Backup database
+    db.backup().then(() => {
+        console.log('Final backup completed');
+        process.exit(0);
+    }).catch(error => {
+        console.error('Final backup failed:', error);
+        process.exit(1);
+    });
+}
+
+// ========== DATABASE CLASS ==========
+// Note: This is a simplified JSON-based database for demo purposes.
+// In production, use MongoDB, PostgreSQL, or Firebase.
+
+class JSONDatabase {
+    constructor() {
+        this.dataDir = path.join(__dirname, 'data');
+        this.ensureDataDir();
+        this.loadData();
     }
     
-    if (socket.room) {
-      stopCoinDeduction(socket.room);
-      socket.to(socket.room).emit("peer-left");
-      
-      const room = activeRooms.get(socket.room);
-      if (room) {
-        room.users = room.users.filter(id => id !== socket.id);
-        if (room.users.length === 0) {
-          activeRooms.delete(socket.room);
+    ensureDataDir() {
+        if (!fs.existsSync(this.dataDir)) {
+            fs.mkdirSync(this.dataDir, { recursive: true });
         }
-      }
-    }
-    socket.room = null;
-    broadcastAdminStats();
-    console.log("Disconnected:", socket.id);
-  });
-});
-
-/* ================== REST API ENDPOINTS ================== */
-app.get("/", (_, res) =>
-  res.send("QuikChat Secure Signaling Server Running ✅")
-);
-
-// Health check
-app.get("/health", (_, res) => {
-  res.json({
-    status: "ok",
-    uptime: process.uptime(),
-    connections: io.engine.clientsCount,
-    activeRooms: activeRooms.size,
-    waitingUsers: waiting.length,
-    earningSessions: earningSessions.size
-  });
-});
-
-// Admin stats endpoint
-app.get("/api/admin/stats", async (_, res) => {
-  try {
-    const stats = await getGlobalStats();
-    res.json({
-      ...stats,
-      serverTime: Date.now(),
-      version: "2.0.0"
-    });
-  } catch(e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-// User statistics endpoint
-app.get("/api/user/:id/stats", async (req, res) => {
-  try {
-    const profile = await getUserProfile(req.params.id);
-    if (!profile) {
-      return res.status(404).json({ error: "User not found" });
     }
     
-    res.json({
-      userId: req.params.id,
-      totalEarnings: profile.totalEarnings || 0,
-      totalMinutes: profile.totalMinutes || 0,
-      availableBalance: profile.availableBalance || 0,
-      coins: profile.coins || 0,
-      isPremium: profile.premium?.expiresAt > Date.now() || false
-    });
-  } catch(e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-// Platform earnings endpoint
-app.get("/api/platform/earnings", async (_, res) => {
-  try {
-    // Calculate total platform commission
-    const snapshot = await db.ref('transactions').once('value');
-    const transactions = snapshot.val() || {};
+    loadData() {
+        try {
+            this.users = this.loadFile('users.json') || {};
+            this.messages = this.loadFile('messages.json') || [];
+            this.chats = this.loadFile('chats.json') || [];
+            this.gifts = this.loadFile('gifts.json') || [];
+            this.reports = this.loadFile('reports.json') || [];
+        } catch (error) {
+            console.error('Error loading data:', error);
+            this.users = {};
+            this.messages = [];
+            this.chats = [];
+            this.gifts = [];
+            this.reports = [];
+        }
+    }
     
-    let totalCommission = 0;
-    let totalEarnings = 0;
+    loadFile(filename) {
+        const filePath = path.join(this.dataDir, filename);
+        if (fs.existsSync(filePath)) {
+            const data = fs.readFileSync(filePath, 'utf8');
+            return JSON.parse(data);
+        }
+        return null;
+    }
     
-    Object.values(transactions).forEach(tx => {
-      if (tx.type === 'earning') {
-        totalCommission += tx.commission || 0;
-        totalEarnings += tx.amount || 0;
-      }
-    });
+    saveFile(filename, data) {
+        const filePath = path.join(this.dataDir, filename);
+        fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
+    }
     
-    res.json({
-      totalCommission: totalCommission,
-      totalEarnings: totalEarnings,
-      totalPayouts: totalEarnings - totalCommission,
-      transactionCount: Object.keys(transactions).length
-    });
-  } catch(e) {
-    res.status(500).json({ error: e.message });
-  }
-});
+    async saveUser(user) {
+        this.users[user.id] = {
+            ...user,
+            updatedAt: new Date().toISOString()
+        };
+        
+        this.saveFile('users.json', this.users);
+        return this.users[user.id];
+    }
+    
+    async getUser(userId) {
+        return this.users[userId] || null;
+    }
+    
+    async getUserByUsername(username) {
+        return Object.values(this.users).find(user => 
+            user.username && user.username.toLowerCase() === username.toLowerCase()
+        ) || null;
+    }
+    
+    async updateUser(userId, updates) {
+        if (!this.users[userId]) {
+            throw new Error('User not found');
+        }
+        
+        this.users[userId] = {
+            ...this.users[userId],
+            ...updates,
+            updatedAt: new Date().toISOString()
+        };
+        
+        this.saveFile('users.json', this.users);
+        return this.users[userId];
+    }
+    
+    async saveMessage(message) {
+        this.messages.push({
+            ...message,
+            savedAt: new Date().toISOString()
+        });
+        
+        // Keep only last 10000 messages to prevent memory issues
+        if (this.messages.length > 10000) {
+            this.messages = this.messages.slice(-5000);
+        }
+        
+        this.saveFile('messages.json', this.messages);
+        return message;
+    }
+    
+    async saveGift(gift) {
+        this.gifts.push(gift);
+        this.saveFile('gifts.json', this.gifts);
+        return gift;
+    }
+    
+    async saveReport(report) {
+        this.reports.push(report);
+        this.saveFile('reports.json', this.reports);
+        return report;
+    }
+    
+    async getUserChats(userId) {
+        return this.messages
+            .filter(msg => msg.senderId === userId || msg.receiverId === userId)
+            .reduce((chats, msg) => {
+                const otherUserId = msg.senderId === userId ? msg.receiverId : msg.senderId;
+                if (!chats[otherUserId]) {
+                    chats[otherUserId] = {
+                        userId: otherUserId,
+                        lastMessage: msg,
+                        messageCount: 0
+                    };
+                }
+                chats[otherUserId].messageCount++;
+                if (new Date(msg.timestamp) > new Date(chats[otherUserId].lastMessage.timestamp)) {
+                    chats[otherUserId].lastMessage = msg;
+                }
+                return chats;
+            }, {});
+    }
+    
+    async getChatMessages(chatId) {
+        return this.messages
+            .filter(msg => msg.chatId === chatId)
+            .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+    }
+    
+    async searchUsers(query) {
+        const searchTerm = query.toLowerCase();
+        return Object.values(this.users)
+            .filter(user => 
+                user.username.toLowerCase().includes(searchTerm) ||
+                (user.country && user.country.toLowerCase().includes(searchTerm))
+            )
+            .slice(0, 50); // Limit results
+    }
+    
+    async getTotalUsers() {
+        return Object.keys(this.users).length;
+    }
+    
+    async getTotalMessages() {
+        return this.messages.length;
+    }
+    
+    async getTotalCalls() {
+        // This would need call tracking in production
+        return 0;
+    }
+    
+    async getPremiumUsersCount() {
+        return Object.values(this.users).filter(user => user.isPremium).length;
+    }
+    
+    async getPendingReports() {
+        return this.reports.filter(report => report.status === 'pending').length;
+    }
+    
+    async backup() {
+        const backupDir = path.join(__dirname, 'backups');
+        if (!fs.existsSync(backupDir)) {
+            fs.mkdirSync(backupDir, { recursive: true });
+        }
+        
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const backupFile = path.join(backupDir, `backup-${timestamp}.json`);
+        
+        const backupData = {
+            timestamp: new Date().toISOString(),
+            users: this.users,
+            messages: this.messages.slice(-1000), // Keep only recent messages
+            chats: this.chats,
+            gifts: this.gifts,
+            reports: this.reports
+        };
+        
+        fs.writeFileSync(backupFile, JSON.stringify(backupData, null, 2));
+        
+        // Clean up old backups (keep last 7)
+        const backups = fs.readdirSync(backupDir)
+            .filter(file => file.startsWith('backup-'))
+            .sort();
+        
+        if (backups.length > 7) {
+            for (let i = 0; i < backups.length - 7; i++) {
+                fs.unlinkSync(path.join(backupDir, backups[i]));
+            }
+        }
+    }
+}
 
-/* ================== START ================== */
-server.listen(PORT, () =>
-  console.log(`🚀 QuikChat Server running on port ${PORT}`)
-);
-
-// Graceful shutdown
-process.on('SIGTERM', () => {
-  console.log('SIGTERM received. Closing server...');
-  
-  // Stop all earning sessions
-  earningSessions.forEach((_, userId) => {
-    stopEarningSession(userId);
-  });
-  
-  server.close(() => {
-    console.log('Server closed');
-    process.exit(0);
-  });
-});
-
-// Error handling
-process.on('uncaughtException', (err) => {
-  console.error('Uncaught Exception:', err);
-});
-
-process.on('unhandledRejection', (reason, promise) => {
-  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
-});
+// Export for testing
+module.exports = { server, app, io };
