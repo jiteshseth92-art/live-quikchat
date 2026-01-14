@@ -1,1040 +1,1131 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>QuikChat - Random Video Chat with Earning System</title>
-  
-  <!-- Font Awesome Icons -->
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-  
-  <!-- Google Fonts -->
-  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
-  
-  <link rel="stylesheet" href="style.css" />
-  
-  <!-- SEO Meta Tags -->
-  <meta name="description" content="QuikChat - Free Random Video Chat with Earning System. Meet new people worldwide instantly. Female & Shemale users can earn money per minute!">
-  <meta name="keywords" content="video chat, random chat, earn money, live chat, strangers chat, webcam chat, QuikChat, omegle alternative, earn online">
-  <meta name="author" content="QuikChat Team">
-  <meta name="robots" content="index, follow">
-  <link rel="canonical" href="https://quikchat.com">
-  
-  <!-- Open Graph -->
-  <meta property="og:title" content="QuikChat — Earn Money While Video Chatting" />
-  <meta property="og:description" content="Meet new friends & earn money instantly through live random video chat. Female/Shemale users earn $0.10-$0.12 per minute!" />
-  <meta property="og:url" content="https://quikchat.com" />
-  <meta property="og:type" content="website" />
-  <meta property="og:image" content="https://quikchat.com/og-image.jpg" />
-  
-  <!-- Twitter Card -->
-  <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="QuikChat - Video Chat & Earn Money">
-  <meta name="twitter:description" content="Random video chat platform where female/shemale users can earn money per minute">
-  
-  <!-- PWA -->
-  <meta name="theme-color" content="#0066ff">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <link rel="manifest" href="/manifest.json">
-  
-  <!-- Favicon -->
-  <link rel="icon" type="image/x-icon" href="/favicon.ico">
-  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
-  
-  <!-- Firebase SDK -->
-  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-storage-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
-  
-  <!-- Google Analytics -->
-  <script async src="https://www.googletagmanager.com/gtag/js?id=G-K7NW19YNGZ"></script>
-  <script>
-    window.dataLayer = window.dataLayer || [];
-    function gtag(){dataLayer.push(arguments);}
-    gtag('js', new Date());
-    gtag('config', 'G-K7NW19YNGZ');
-    
-    // Browser Check
-    document.addEventListener("DOMContentLoaded", () => {
-      const ua = navigator.userAgent || navigator.vendor || window.opera;
-      if (ua.includes("FBAN") || ua.includes("FBAV") || ua.includes("Instagram")) {
-        alert("⚠ CAMERA & MIC BLOCKED in Facebook/Instagram Browser!\n\nPlease open QuikChat in Chrome/Safari/Firefox for video calling.");
-      }
-      
-      // Check registration
-      if (!localStorage.getItem('quikchat_userId')) {
-        setTimeout(() => document.getElementById('registrationModal').style.display = 'block', 1000);
-      }
-    });
-  </script>
-  
-  <!-- Structured Data -->
-  <script type="application/ld+json">
-  {
-    "@context": "https://schema.org",
-    "@type": "WebApplication",
-    "name": "QuikChat",
-    "description": "Random video chat platform with earning system for female and shemale users",
-    "url": "https://quikchat.com",
-    "applicationCategory": "CommunicationApplication",
-    "operatingSystem": "Web",
-    "offers": {
-      "@type": "Offer",
-      "price": "0",
-      "priceCurrency": "USD"
-    },
-    "author": {
-      "@type": "Organization",
-      "name": "QuikChat Team"
-    }
-  }
-  </script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QuikChat Global - Video Chat App</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#0b1220">
+    <link rel="icon" type="image/x-icon" href="favicon.ico">
 </head>
 <body>
-  <!-- Loading Screen -->
-  <div id="loadingScreen" class="loading-screen">
-    <div class="loading-content">
-      <div class="loading-spinner-large"></div>
-      <h2>Loading QuikChat...</h2>
-      <p>Initializing video chat system</p>
-    </div>
-  </div>
-
-  <!-- Registration Modal -->
-  <div id="registrationModal" class="modal">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h2><i class="fas fa-user-plus"></i> Create Your Profile</h2>
-        <p>Complete your profile to start video chatting & earning</p>
-      </div>
-      
-      <form id="registrationForm">
-        <div class="form-group">
-          <label for="regName"><i class="fas fa-user"></i> Full Name *</label>
-          <input type="text" id="regName" placeholder="Enter your full name" required minlength="2" maxlength="50">
-        </div>
-        
-        <div class="form-row">
-          <div class="form-group">
-            <label for="regAge"><i class="fas fa-birthday-cake"></i> Age *</label>
-            <input type="number" id="regAge" min="18" max="100" placeholder="18+" required>
-          </div>
-          
-          <div class="form-group">
-            <label for="regGender"><i class="fas fa-venus-mars"></i> Gender *</label>
-            <select id="regGender" required>
-              <option value="">Select Gender</option>
-              <option value="male">♂ Male</option>
-              <option value="female">♀ Female</option>
-              <option value="shemale">⚧ Shemale</option>
-              <option value="other">👤 Other</option>
-            </select>
-          </div>
-        </div>
-        
-        <div class="form-group">
-          <label for="regCountry"><i class="fas fa-globe"></i> Country *</label>
-          <select id="regCountry" required>
-            <option value="">Select Country</option>
-            <option value="in">🇮🇳 India</option>
-            <option value="us">🇺🇸 USA</option>
-            <option value="pk">🇵🇰 Pakistan</option>
-            <option value="bd">🇧🇩 Bangladesh</option>
-            <option value="gb">🇬🇧 UK</option>
-            <option value="ca">🇨🇦 Canada</option>
-            <option value="au">🇦🇺 Australia</option>
-            <option value="ae">🇦🇪 UAE</option>
-            <option value="sa">🇸🇦 Saudi Arabia</option>
-            <option value="qa">🇶🇦 Qatar</option>
-            <option value="om">🇴🇲 Oman</option>
-            <option value="kw">🇰🇼 Kuwait</option>
-            <option value="bh">🇧🇭 Bahrain</option>
-            <option value="tr">🇹🇷 Turkey</option>
-            <option value="eg">🇪🇬 Egypt</option>
-            <option value="za">🇿🇦 South Africa</option>
-            <option value="ng">🇳🇬 Nigeria</option>
-            <option value="ke">🇰🇪 Kenya</option>
-            <option value="gh">🇬🇭 Ghana</option>
-            <option value="ph">🇵🇭 Philippines</option>
-            <option value="id">🇮🇩 Indonesia</option>
-            <option value="my">🇲🇾 Malaysia</option>
-            <option value="sg">🇸🇬 Singapore</option>
-            <option value="jp">🇯🇵 Japan</option>
-            <option value="kr">🇰🇷 South Korea</option>
-            <option value="cn">🇨🇳 China</option>
-            <option value="fr">🇫🇷 France</option>
-            <option value="de">🇩🇪 Germany</option>
-            <option value="it">🇮🇹 Italy</option>
-            <option value="es">🇪🇸 Spain</option>
-            <option value="ru">🇷🇺 Russia</option>
-            <option value="br">🇧🇷 Brazil</option>
-            <option value="mx">🇲🇽 Mexico</option>
-            <option value="ar">🇦🇷 Argentina</option>
-          </select>
-        </div>
-        
-        <div class="form-group">
-          <label for="regEmail"><i class="fas fa-envelope"></i> Email (For Payments)</label>
-          <input type="email" id="regEmail" placeholder="your@email.com">
-          <small>Required for payout verification</small>
-        </div>
-        
-        <div class="form-group">
-          <label for="regBio"><i class="fas fa-edit"></i> Bio (Optional)</label>
-          <textarea id="regBio" placeholder="Tell others about yourself..." rows="3" maxlength="200"></textarea>
-        </div>
-        
-        <div class="form-group">
-          <label for="regPhoto"><i class="fas fa-camera"></i> Profile Picture</label>
-          <div class="file-upload">
-            <input type="file" id="regPhoto" accept="image/*" capture="user">
-            <label for="regPhoto" class="upload-btn">
-              <i class="fas fa-cloud-upload-alt"></i> Upload Photo
-            </label>
-            <span id="fileName">No file chosen</span>
-          </div>
-          <div class="photo-preview" id="photoPreview">
-            <i class="fas fa-user-circle"></i>
-          </div>
-          <small>Max 2MB, JPG/PNG format</small>
-        </div>
-        
-        <div class="earnings-info" id="earningsInfo" style="display: none;">
-          <div class="info-box">
-            <i class="fas fa-money-bill-wave"></i>
-            <div>
-              <h4>Earning Opportunity!</h4>
-              <p>As a <span id="genderDisplay"></span> user, you can earn <strong>$0.10-$0.12 per minute</strong> in private calls!</p>
-            </div>
-          </div>
-        </div>
-        
-        <div class="form-group policy">
-          <input type="checkbox" id="regTerms" required>
-          <label for="regTerms">
-            I agree to <a href="/terms" target="_blank">Terms of Service</a>, 
-            <a href="/privacy" target="_blank">Privacy Policy</a>, and confirm I am 18+ years old.
-          </label>
-        </div>
-        
-        <div class="form-actions">
-          <button type="submit" id="regSubmit" class="btn-primary">
-            <i class="fas fa-video"></i> Start Video Chatting
-          </button>
-          <button type="button" id="skipRegistration" class="btn-secondary">
-            Skip & Continue as Guest
-          </button>
-        </div>
-      </form>
-    </div>
-  </div>
-
-  <!-- Menu Panel -->
-  <div id="menuPanel" class="menu-panel">
-    <div class="menu-header">
-      <h3><i class="fas fa-user-circle"></i> My Account</h3>
-      <button id="closeMenu" class="close-btn"><i class="fas fa-times"></i></button>
-    </div>
-    
-    <div class="menu-user-info">
-      <div id="menuUserPhoto" class="user-photo">
-        <i class="fas fa-user-circle"></i>
-      </div>
-      <div class="user-details">
-        <h4 id="menuUserName">Guest User</h4>
-        <p id="menuUserLocation"><i class="fas fa-map-marker-alt"></i> <span>Unknown</span></p>
-        <div class="user-stats">
-          <span class="stat-item"><i class="fas fa-coins"></i> <span id="menuCoinsVal">500</span></span>
-          <span class="stat-item"><i class="fas fa-dollar-sign"></i> <span id="menuEarningsVal">0</span></span>
-        </div>
-      </div>
-    </div>
-    
-    <div class="menu-items">
-      <button id="editProfileBtn" class="menu-item">
-        <i class="fas fa-edit"></i> Edit Profile
-      </button>
-      <button id="earningsBtn" class="menu-item earning-item">
-        <i class="fas fa-money-bill-wave"></i> Earnings Dashboard
-        <span class="badge" id="earningsBadge" style="display: none;">$0</span>
-      </button>
-      <button id="purchaseHistoryBtn" class="menu-item">
-        <i class="fas fa-shopping-cart"></i> Purchase History
-      </button>
-      <button id="statsBtn" class="menu-item">
-        <i class="fas fa-chart-bar"></i> Global Statistics
-      </button>
-      <button id="premiumBtn" class="menu-item premium">
-        <i class="fas fa-crown"></i> Go Premium
-        <span class="badge">NEW</span>
-      </button>
-      <button id="inviteBtn" class="menu-item">
-        <i class="fas fa-user-plus"></i> Invite Friends
-      </button>
-      <button id="helpBtn" class="menu-item">
-        <i class="fas fa-question-circle"></i> Help & Support
-      </button>
-      <button id="logoutBtn" class="menu-item logout">
-        <i class="fas fa-sign-out-alt"></i> Logout
-      </button>
-    </div>
-    
-    <div class="menu-footer">
-      <p>QuikChat v3.0</p>
-      <p class="copyright">© 2024 All rights reserved</p>
-    </div>
-  </div>
-
-  <!-- Earnings Dashboard -->
-  <div id="earningsModal" class="modal">
-    <div class="modal-content wide">
-      <div class="modal-header">
-        <h2><i class="fas fa-money-bill-wave"></i> Earnings Dashboard</h2>
-        <button class="close-modal"><i class="fas fa-times"></i></button>
-      </div>
-      
-      <div class="tab-container">
-        <div class="tab-header">
-          <button class="tab-btn active" data-tab="overview">Overview</button>
-          <button class="tab-btn" data-tab="transactions">Transactions</button>
-          <button class="tab-btn" data-tab="payout">Payout</button>
-          <button class="tab-btn" data-tab="rates">Rates</button>
-        </div>
-        
-        <div class="tab-content active" id="overviewTab">
-          <div class="earnings-stats">
-            <div class="stat-card">
-              <div class="stat-icon success"><i class="fas fa-wallet"></i></div>
-              <div class="stat-info">
-                <h3>Total Earnings</h3>
-                <p class="stat-value">$<span id="totalEarnings">0.00</span></p>
-                <p class="stat-change">+$0.00 this week</p>
-              </div>
-            </div>
-            
-            <div class="stat-card">
-              <div class="stat-icon info"><i class="fas fa-clock"></i></div>
-              <div class="stat-info">
-                <h3>Total Minutes</h3>
-                <p class="stat-value"><span id="totalMinutes">0</span></p>
-                <p class="stat-change"><span id="todayMinutes">0</span> min today</p>
-              </div>
-            </div>
-            
-            <div class="stat-card">
-              <div class="stat-icon warning"><i class="fas fa-percentage"></i></div>
-              <div class="stat-info">
-                <h3>Commission</h3>
-                <p class="stat-value">20%</p>
-                <p class="stat-change">Platform fee</p>
-              </div>
-            </div>
-            
-            <div class="stat-card">
-              <div class="stat-icon primary"><i class="fas fa-coins"></i></div>
-              <div class="stat-info">
-                <h3>Available</h3>
-                <p class="stat-value">$<span id="availableBalance">0.00</span></p>
-                <p class="stat-change">Ready for payout</p>
-              </div>
-            </div>
-          </div>
-          
-          <div class="chart-container">
-            <h3><i class="fas fa-chart-line"></i> Earnings Trend</h3>
-            <div class="chart-placeholder">
-              <p>Earnings chart will appear here</p>
-            </div>
-          </div>
-          
-          <div class="quick-actions">
-            <button id="startEarningBtn" class="btn-success">
-              <i class="fas fa-play-circle"></i> Start Earning Session
-            </button>
-            <button id="stopEarningBtn" class="btn-danger" style="display: none;">
-              <i class="fas fa-stop-circle"></i> Stop Earning
-            </button>
-            <button id="refreshEarningsBtn" class="btn-secondary">
-              <i class="fas fa-sync-alt"></i> Refresh
-            </button>
-          </div>
-        </div>
-        
-        <div class="tab-content" id="transactionsTab">
-          <h3><i class="fas fa-receipt"></i> Recent Transactions</h3>
-          <div class="table-container">
-            <table id="transactionsTable">
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Type</th>
-                  <th>Amount</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td colspan="4" class="empty-state">No transactions yet</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-        
-        <div class="tab-content" id="payoutTab">
-          <h3><i class="fas fa-dollar-sign"></i> Request Payout</h3>
-          <div class="payout-info">
-            <div class="info-box">
-              <i class="fas fa-info-circle"></i>
-              <p>Minimum payout amount: <strong>$5.00</strong></p>
-            </div>
-            
-            <div class="balance-display">
-              <h4>Available Balance: <span class="balance-amount">$<span id="payoutBalance">0.00</span></span></h4>
-              <p class="balance-note" id="payoutNote">Add $5.00 more to request payout</p>
-            </div>
-            
-            <div class="payout-methods">
-              <h4><i class="fas fa-credit-card"></i> Payment Method</h4>
-              <div class="method-options">
-                <label class="method-option">
-                  <input type="radio" name="payoutMethod" value="paypal" checked>
-                  <div class="method-content">
-                    <i class="fab fa-paypal"></i>
-                    <span>PayPal</span>
-                  </div>
-                </label>
-                <label class="method-option">
-                  <input type="radio" name="payoutMethod" value="bank">
-                  <div class="method-content">
-                    <i class="fas fa-university"></i>
-                    <span>Bank Transfer</span>
-                  </div>
-                </label>
-                <label class="method-option">
-                  <input type="radio" name="payoutMethod" value="crypto">
-                  <div class="method-content">
-                    <i class="fab fa-bitcoin"></i>
-                    <span>Crypto</span>
-                  </div>
-                </label>
-              </div>
-              
-              <div class="method-details" id="paypalDetails">
-                <div class="form-group">
-                  <label>PayPal Email</label>
-                  <input type="email" id="paypalEmail" placeholder="your@paypal.com">
+    <!-- ========== LOADING SCREEN ========== -->
+    <div class="screen active" id="loadingScreen">
+        <div class="fullscreen-overlay">
+            <div class="loading-content">
+                <div class="logo-large">
+                    <i class="fas fa-video"></i>
+                    <h1>QuikChat Global</h1>
                 </div>
-              </div>
+                <div class="loading-spinner-xl"></div>
+                <h2 id="loadingTitle">Loading App</h2>
+                <p id="loadingMessage">Please wait while we set things up...</p>
+                <div class="loading-progress">
+                    <div class="progress-fill" id="loadingProgress"></div>
+                </div>
             </div>
-            
-            <button id="requestPayoutBtn" class="btn-primary" disabled>
-              <i class="fas fa-paper-plane"></i> Request Payout
+        </div>
+    </div>
+
+    <!-- ========== HOME SCREEN ========== -->
+    <div class="screen" id="homeScreen">
+        <div class="app-header">
+            <div class="header-left">
+                <button class="btn-icon" id="menuToggle">
+                    <i class="fas fa-bars"></i>
+                </button>
+                <div class="logo">
+                    <i class="fas fa-video"></i>
+                    <span>QuikChat</span>
+                </div>
+                <div class="global-stats">
+                    <div class="stat-item">
+                        <i class="fas fa-users"></i>
+                        <span class="stat-value">1,234</span>
+                    </div>
+                    <div class="stat-item">
+                        <i class="fas fa-comments"></i>
+                        <span class="stat-value">567</span>
+                    </div>
+                    <div class="stat-item">
+                        <i class="fas fa-globe"></i>
+                        <span class="stat-value">42</span>
+                    </div>
+                </div>
+            </div>
+            <div class="header-right">
+                <button class="btn-icon" id="notificationsBtn">
+                    <i class="fas fa-bell"></i>
+                    <span class="notification-badge">3</span>
+                </button>
+                <button class="btn-icon premium" id="premiumBtn">
+                    <i class="fas fa-crown"></i>
+                </button>
+            </div>
+        </div>
+
+        <div class="main-nav">
+            <div class="nav-cards">
+                <div class="nav-card primary" data-action="video-chat">
+                    <div class="nav-icon">
+                        <i class="fas fa-video"></i>
+                    </div>
+                    <h3>Video Chat</h3>
+                    <p>Connect face-to-face with strangers</p>
+                    <span class="nav-badge">LIVE</span>
+                </div>
+                
+                <div class="nav-card" data-action="text-chat">
+                    <div class="nav-icon">
+                        <i class="fas fa-comments"></i>
+                    </div>
+                    <h3>Text Chat</h3>
+                    <p>Anonymous text conversations</p>
+                </div>
+                
+                <div class="nav-card premium" data-action="premium">
+                    <div class="nav-icon">
+                        <i class="fas fa-crown"></i>
+                    </div>
+                    <h3>Go Premium</h3>
+                    <p>Unlock exclusive features</p>
+                    <span class="nav-badge">PRO</span>
+                </div>
+                
+                <div class="nav-card" data-action="friends">
+                    <div class="nav-icon">
+                        <i class="fas fa-user-friends"></i>
+                    </div>
+                    <h3>Friends</h3>
+                    <p>Manage your contacts</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="quick-actions">
+            <div class="section-title">
+                <i class="fas fa-bolt"></i>
+                <span>Quick Actions</span>
+            </div>
+            <div class="action-buttons">
+                <button class="action-btn" data-action="profile">
+                    <i class="fas fa-user-edit"></i>
+                    <span>Edit Profile</span>
+                </button>
+                <button class="action-btn" data-action="history">
+                    <i class="fas fa-history"></i>
+                    <span>Chat History</span>
+                </button>
+                <button class="action-btn premium" data-action="gifts">
+                    <i class="fas fa-gift"></i>
+                    <span>Send Gifts</span>
+                </button>
+                <button class="action-btn" data-action="settings">
+                    <i class="fas fa-cog"></i>
+                    <span>Settings</span>
+                </button>
+            </div>
+        </div>
+
+        <div class="online-users">
+            <div class="section-header">
+                <div class="section-title">
+                    <i class="fas fa-user-circle"></i>
+                    <span>Online Now</span>
+                </div>
+                <div class="count-badge" id="onlineCount">24</div>
+            </div>
+            <div class="users-grid" id="usersGrid">
+                <!-- Online users will be populated here by JavaScript -->
+                <div class="user-card">
+                    <div class="user-avatar avatar">
+                        <img src="https://i.pravatar.cc/150?img=1" alt="User">
+                    </div>
+                    <div class="user-name">JohnDoe</div>
+                    <div class="user-meta">
+                        <span class="user-age">25</span>
+                        <span class="user-gender gender-male">♂</span>
+                    </div>
+                    <div class="user-country">
+                        <span class="flag">🇺🇸</span>
+                        <span>USA</span>
+                    </div>
+                </div>
+                
+                <div class="user-card">
+                    <div class="user-avatar avatar premium">
+                        <img src="https://i.pravatar.cc/150?img=5" alt="User">
+                    </div>
+                    <div class="user-name">Sarah_23</div>
+                    <div class="user-meta">
+                        <span class="user-age">23</span>
+                        <span class="user-gender gender-female">♀</span>
+                    </div>
+                    <div class="user-country">
+                        <span class="flag">🇬🇧</span>
+                        <span>UK</span>
+                    </div>
+                </div>
+                
+                <div class="user-card">
+                    <div class="user-avatar avatar">
+                        👨‍💻
+                    </div>
+                    <div class="user-name">Alex_Tech</div>
+                    <div class="user-meta">
+                        <span class="user-age">30</span>
+                        <span class="user-gender gender-male">♂</span>
+                    </div>
+                    <div class="user-country">
+                        <span class="flag">🇮🇳</span>
+                        <span>India</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="bottom-nav">
+            <button class="nav-item active" data-target="home">
+                <i class="fas fa-home"></i>
+                <span>Home</span>
             </button>
-          </div>
-        </div>
-        
-        <div class="tab-content" id="ratesTab">
-          <h3><i class="fas fa-info-circle"></i> Rate Information</h3>
-          <div class="rate-cards">
-            <div class="rate-card">
-              <div class="rate-header">
-                <i class="fas fa-venus"></i>
-                <h4>Female Users</h4>
-              </div>
-              <div class="rate-body">
-                <div class="rate-amount">$0.10 <span>/minute</span></div>
-                <ul class="rate-features">
-                  <li><i class="fas fa-check"></i> Earn in private calls</li>
-                  <li><i class="fas fa-check"></i> 20% platform commission</li>
-                  <li><i class="fas fa-check"></i> Real-time earnings</li>
-                </ul>
-              </div>
-            </div>
-            
-            <div class="rate-card premium">
-              <div class="rate-header">
-                <i class="fas fa-transgender-alt"></i>
-                <h4>Shemale Users</h4>
-              </div>
-              <div class="rate-body">
-                <div class="rate-amount">$0.12 <span>/minute</span></div>
-                <ul class="rate-features">
-                  <li><i class="fas fa-check"></i> Premium earning rate</li>
-                  <li><i class="fas fa-check"></i> 20% platform commission</li>
-                  <li><i class="fas fa-check"></i> Priority matching</li>
-                </ul>
-              </div>
-            </div>
-            
-            <div class="rate-card">
-              <div class="rate-header">
-                <i class="fas fa-mars"></i>
-                <h4>Male Users</h4>
-              </div>
-              <div class="rate-body">
-                <div class="rate-amount">Pay $0.10 <span>/minute</span></div>
-                <ul class="rate-features">
-                  <li><i class="fas fa-check"></i> Pay for private calls</li>
-                  <li><i class="fas fa-check"></i> Connect with earners</li>
-                  <li><i class="fas fa-check"></i> Premium features available</li>
-                </ul>
-              </div>
-            </div>
-          </div>
-          
-          <div class="commission-info">
-            <h4><i class="fas fa-percentage"></i> Platform Commission</h4>
-            <p>The platform deducts 20% commission from all earnings to maintain and improve the service.</p>
-            <div class="commission-breakdown">
-              <div class="breakdown-item">
-                <span class="label">User Earns</span>
-                <span class="value">80%</span>
-              </div>
-              <div class="breakdown-item">
-                <span class="label">Platform Fee</span>
-                <span class="value">20%</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Statistics Modal -->
-  <div id="statsModal" class="modal">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h2><i class="fas fa-globe-americas"></i> Global Statistics</h2>
-        <button class="close-modal"><i class="fas fa-times"></i></button>
-      </div>
-      
-      <div class="stats-container">
-        <div class="stats-grid">
-          <div class="stat-box primary">
-            <div class="stat-icon"><i class="fas fa-users"></i></div>
-            <div class="stat-info">
-              <h3>Total Online</h3>
-              <p class="stat-number" id="totalUsers">0</p>
-            </div>
-          </div>
-          
-          <div class="stat-box success">
-            <div class="stat-icon"><i class="fas fa-venus"></i></div>
-            <div class="stat-info">
-              <h3>Female Online</h3>
-              <p class="stat-number" id="femaleUsers">0</p>
-            </div>
-          </div>
-          
-          <div class="stat-box info">
-            <div class="stat-icon"><i class="fas fa-mars"></i></div>
-            <div class="stat-info">
-              <h3>Male Online</h3>
-              <p class="stat-number" id="maleUsers">0</p>
-            </div>
-          </div>
-          
-          <div class="stat-box warning">
-            <div class="stat-icon"><i class="fas fa-transgender-alt"></i></div>
-            <div class="stat-info">
-              <h3>Shemale Online</h3>
-              <p class="stat-number" id="shemaleUsers">0</p>
-            </div>
-          </div>
-          
-          <div class="stat-box danger">
-            <div class="stat-icon"><i class="fas fa-video"></i></div>
-            <div class="stat-info">
-              <h3>Active Calls</h3>
-              <p class="stat-number" id="activeCalls">0</p>
-            </div>
-          </div>
-          
-          <div class="stat-box secondary">
-            <div class="stat-icon"><i class="fas fa-money-bill-wave"></i></div>
-            <div class="stat-info">
-              <h3>Earning Now</h3>
-              <p class="stat-number" id="earningUsers">0</p>
-            </div>
-          </div>
-        </div>
-        
-        <div class="country-stats">
-          <h3><i class="fas fa-flag"></i> Users by Country</h3>
-          <div id="countryStatsList" class="country-list">
-            <div class="loading-text">Loading country data...</div>
-          </div>
-        </div>
-        
-        <div class="stats-footer">
-          <p><i class="fas fa-sync-alt"></i> Updates every 10 seconds</p>
-          <p class="timestamp">Last updated: <span id="statsTimestamp">--:--:--</span></p>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Premium Modal -->
-  <div id="premiumModal" class="modal">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h2><i class="fas fa-crown"></i> Go Premium</h2>
-        <button class="close-modal"><i class="fas fa-times"></i></button>
-      </div>
-      
-      <div class="premium-plans">
-        <div class="plan-card">
-          <div class="plan-header">
-            <h3>Basic</h3>
-            <div class="plan-price">FREE</div>
-          </div>
-          <ul class="plan-features">
-            <li><i class="fas fa-check"></i> Public video chat</li>
-            <li><i class="fas fa-check"></i> Basic filters</li>
-            <li><i class="fas fa-check"></i> Text chat</li>
-            <li><i class="fas fa-times"></i> Private calls</li>
-            <li><i class="fas fa-times"></i> No ads</li>
-          </ul>
-        </div>
-        
-        <div class="plan-card featured">
-          <div class="plan-badge">MOST POPULAR</div>
-          <div class="plan-header">
-            <h3>Premium</h3>
-            <div class="plan-price">$9.99<span>/month</span></div>
-          </div>
-          <ul class="plan-features">
-            <li><i class="fas fa-check"></i> Unlimited private calls</li>
-            <li><i class="fas fa-check"></i> Advanced filters</li>
-            <li><i class="fas fa-check"></i> Ad-free experience</li>
-            <li><i class="fas fa-check"></i> Priority matching</li>
-            <li><i class="fas fa-check"></i> Profile highlighting</li>
-          </ul>
-          <button class="btn-primary">Upgrade Now</button>
-        </div>
-        
-        <div class="plan-card">
-          <div class="plan-header">
-            <h3>Pro</h3>
-            <div class="plan-price">$24.99<span>/month</span></div>
-          </div>
-          <ul class="plan-features">
-            <li><i class="fas fa-check"></i> All Premium features</li>
-            <li><i class="fas fa-check"></i> Increased earning rates</li>
-            <li><i class="fas fa-check"></i> Dedicated support</li>
-            <li><i class="fas fa-check"></i> Analytics dashboard</li>
-            <li><i class="fas fa-check"></i> Custom themes</li>
-          </ul>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Age Verification Modal -->
-  <div id="ageVerifyModal" class="modal">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h2><i class="fas fa-id-card"></i> Age Verification Required</h2>
-      </div>
-      
-      <div class="verification-content">
-        <div class="verification-info">
-          <i class="fas fa-shield-alt"></i>
-          <h3>Private Calls - 18+ Only</h3>
-          <p>To access private video calls, you must verify that you are 18 years or older.</p>
-        </div>
-        
-        <div class="verification-steps">
-          <div class="step">
-            <div class="step-number">1</div>
-            <div class="step-content">
-              <h4>Face Camera</h4>
-              <p>Position your face in the camera view</p>
-            </div>
-          </div>
-          
-          <div class="step">
-            <div class="step-number">2</div>
-            <div class="step-content">
-              <h4>AI Verification</h4>
-              <p>Our AI will verify your age automatically</p>
-            </div>
-          </div>
-          
-          <div class="step">
-            <div class="step-number">3</div>
-            <div class="step-content">
-              <h4>Access Granted</h4>
-              <p>Start private calls immediately</p>
-            </div>
-          </div>
-        </div>
-        
-        <div class="video-preview">
-          <video id="verificationVideo" autoplay muted playsinline></video>
-          <div class="overlay">
-            <div class="face-guide"></div>
-            <p>Position face inside the circle</p>
-          </div>
-        </div>
-        
-        <div class="verification-actions">
-          <button id="startVerification" class="btn-primary">
-            <i class="fas fa-camera"></i> Start Verification
-          </button>
-          <button id="skipVerification" class="btn-secondary">
-            Skip & Use Public Chat
-          </button>
-        </div>
-        
-        <p class="privacy-note">
-          <i class="fas fa-lock"></i> Your image is processed locally and deleted immediately after verification.
-        </p>
-      </div>
-    </div>
-  </div>
-
-  <!-- Main App Interface -->
-  <div id="app" style="display: none;">
-    <!-- Header -->
-    <header class="app-header">
-      <div class="header-left">
-        <button id="menuBtn" class="icon-btn menu-toggle">
-          <i class="fas fa-bars"></i>
-        </button>
-        <div class="logo">
-          <i class="fas fa-video"></i>
-          <h1>QuikChat</h1>
-        </div>
-      </div>
-      
-      <div class="header-center">
-        <div class="status-container">
-          <div id="statusTop" class="status-badge ready">
-            <i class="fas fa-circle"></i>
-            <span>Ready</span>
-          </div>
-          <div id="onlineBox" class="online-counter">
-            <i class="fas fa-users"></i>
-            <span id="onlineCount">0</span> online
-          </div>
-        </div>
-      </div>
-      
-      <div class="header-right">
-        <div class="coin-display">
-          <i class="fas fa-coins"></i>
-          <span id="coinsVal">500</span>
-        </div>
-        
-        <button id="globalStatsBtn" class="icon-btn" title="Global Stats">
-          <i class="fas fa-chart-bar"></i>
-        </button>
-        
-        <div id="earningIndicator" class="earning-indicator" title="Not earning">
-          <i class="fas fa-dollar-sign"></i>
-        </div>
-      </div>
-    </header>
-
-    <!-- Control Panel -->
-    <div class="control-panel">
-      <div class="filter-section">
-        <div class="filter-group">
-          <label><i class="fas fa-venus-mars"></i> Gender</label>
-          <select id="genderSelect" class="filter-select">
-            <option value="any">Any</option>
-            <option value="male">Male</option>
-            <option value="female">Female</option>
-            <option value="shemale">Shemale</option>
-          </select>
-        </div>
-        
-        <div class="filter-group">
-          <label><i class="fas fa-globe"></i> Country</label>
-          <select id="countrySelect" class="filter-select">
-            <option value="any">Any Country</option>
-            <!-- Countries loaded dynamically -->
-          </select>
-        </div>
-        
-        <div class="filter-group">
-          <label><i class="fas fa-user"></i> Display Name</label>
-          <input id="nameInput" type="text" placeholder="Your name" maxlength="20">
-        </div>
-        
-        <button id="applyFilters" class="btn-sm">
-          <i class="fas fa-check"></i> Apply
-        </button>
-      </div>
-    </div>
-
-    <!-- Video Section -->
-    <div class="video-container">
-      <div class="video-wrapper">
-        <!-- Remote Video -->
-        <div class="video-card remote">
-          <div class="video-header">
-            <div class="partner-info">
-              <i class="fas fa-user-friends"></i>
-              <span>Partner</span>
-              <span id="partnerName" class="partner-name">...</span>
-            </div>
-            <div class="connection-status">
-              <span id="partnerStatus" class="status-text">Waiting...</span>
-            </div>
-          </div>
-          
-          <div class="video-frame">
-            <video id="remoteVideo" autoplay playsinline></video>
-            <div class="video-overlay" id="remoteOverlay">
-              <div class="loading-animation">
-                <div class="spinner"></div>
-                <p>Connecting to partner...</p>
-              </div>
-            </div>
-            <img id="remoteSticker" class="sticker" hidden />
-          </div>
-          
-          <div class="video-footer">
-            <div class="partner-details" id="partnerDetails">
-              <span class="detail-item"><i class="fas fa-venus-mars"></i> <span id="partnerGender">Unknown</span></span>
-              <span class="detail-item"><i class="fas fa-globe"></i> <span id="partnerCountry">Unknown</span></span>
-            </div>
-          </div>
-        </div>
-        
-        <!-- Local Video -->
-        <div class="video-card local">
-          <div class="video-header">
-            <div class="user-info">
-              <i class="fas fa-user"></i>
-              <span>You</span>
-              <span id="localName" class="user-name">Guest</span>
-            </div>
-            <div class="call-timer" id="timer">00:00</div>
-          </div>
-          
-          <div class="video-frame">
-            <video id="localVideo" autoplay muted playsinline></video>
-            <img id="localSticker" class="sticker" hidden />
-            <div class="local-controls">
-              <button id="muteBtn" class="control-btn">
-                <i class="fas fa-microphone"></i>
-              </button>
-              <button id="videoBtn" class="control-btn">
+            <button class="nav-item" data-target="videoChat">
                 <i class="fas fa-video"></i>
-              </button>
-              <button id="switchCamBtn" class="control-btn">
-                <i class="fas fa-sync-alt"></i>
-              </button>
+                <span>Video</span>
+            </button>
+            <button class="nav-item" data-target="textChat">
+                <i class="fas fa-comment"></i>
+                <span>Chat</span>
+            </button>
+            <button class="nav-item" data-target="settings">
+                <i class="fas fa-cog"></i>
+                <span>Settings</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- ========== REGISTRATION SCREEN ========== -->
+    <div class="screen" id="registrationScreen">
+        <div class="registration-container">
+            <div class="registration-header">
+                <button class="back-btn">
+                    <i class="fas fa-arrow-left"></i>
+                </button>
+                <h2>Create Your Profile</h2>
+                <p>Tell us about yourself to get started</p>
             </div>
-          </div>
-          
-          <div class="video-footer">
-            <div class="earning-status" id="earningStatusDisplay">
-              <i class="fas fa-dollar-sign"></i>
-              <span>Earning: $<span id="currentEarnings">0.00</span></span>
+
+            <form class="registration-form" id="registrationForm">
+                <div class="form-section">
+                    <h3>Profile Picture</h3>
+                    <div class="avatar-upload">
+                        <div class="avatar-preview" id="avatarPreview">
+                            👤
+                        </div>
+                        <div>
+                            <label for="avatarInput" class="file-upload">
+                                <input type="file" id="avatarInput" accept="image/*" class="file-upload-input" hidden>
+                                <span class="file-upload-label">
+                                    <i class="fas fa-camera"></i>
+                                    Upload Photo
+                                </span>
+                            </label>
+                            <p class="input-hint">Max 5MB. JPG, PNG, or GIF</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-section">
+                    <label class="form-label" for="username">Username *</label>
+                    <input type="text" id="username" class="form-input" placeholder="Choose a unique username" required minlength="3" maxlength="20">
+                    <p class="input-hint">3-20 characters. Letters, numbers, and underscores only.</p>
+                </div>
+
+                <div class="form-section">
+                    <label class="form-label" for="age">Age *</label>
+                    <input type="number" id="age" class="form-input" placeholder="Enter your age" required min="18" max="100">
+                </div>
+
+                <div class="form-section">
+                    <label class="form-label">Gender *</label>
+                    <div class="gender-selector">
+                        <div class="gender-option active" data-gender="male">
+                            <i class="fas fa-mars"></i>
+                            <span>Male</span>
+                        </div>
+                        <div class="gender-option" data-gender="female">
+                            <i class="fas fa-venus"></i>
+                            <span>Female</span>
+                        </div>
+                        <div class="gender-option" data-gender="other">
+                            <i class="fas fa-transgender-alt"></i>
+                            <span>Other</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-section">
+                    <label class="form-label">Country *</label>
+                    <div class="country-selector">
+                        <div class="country-option active" data-country="us">
+                            <span class="country-flag">🇺🇸</span>
+                            <span class="country-name">USA</span>
+                        </div>
+                        <div class="country-option" data-country="in">
+                            <span class="country-flag">🇮🇳</span>
+                            <span class="country-name">India</span>
+                        </div>
+                        <div class="country-option" data-country="gb">
+                            <span class="country-flag">🇬🇧</span>
+                            <span class="country-name">UK</span>
+                        </div>
+                        <div class="country-option" data-country="ca">
+                            <span class="country-flag">🇨🇦</span>
+                            <span class="country-name">Canada</span>
+                        </div>
+                        <div class="country-option" data-country="au">
+                            <span class="country-flag">🇦🇺</span>
+                            <span class="country-name">Australia</span>
+                        </div>
+                        <div class="country-option" data-country="de">
+                            <span class="country-flag">🇩🇪</span>
+                            <span class="country-name">Germany</span>
+                        </div>
+                        <div class="country-option" data-country="fr">
+                            <span class="country-flag">🇫🇷</span>
+                            <span class="country-name">France</span>
+                        </div>
+                        <div class="country-option" data-country="jp">
+                            <span class="country-flag">🇯🇵</span>
+                            <span class="country-name">Japan</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-section">
+                    <label class="form-label">Chat Preference</label>
+                    <div class="preference-selector">
+                        <div class="pref-option active" data-pref="both">
+                            <i class="fas fa-venus-mars"></i>
+                            <span>Both</span>
+                        </div>
+                        <div class="pref-option" data-pref="male">
+                            <i class="fas fa-mars"></i>
+                            <span>Male</span>
+                        </div>
+                        <div class="pref-option" data-pref="female">
+                            <i class="fas fa-venus"></i>
+                            <span>Female</span>
+                        </div>
+                        <div class="pref-option premium" data-pref="premium">
+                            <i class="fas fa-crown"></i>
+                            <span>Premium Only</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-section">
+                    <label class="form-label" for="bio">Bio</label>
+                    <textarea id="bio" class="form-input form-textarea" placeholder="Tell us something about yourself..." maxlength="500"></textarea>
+                    <div class="char-counter" id="bioCharCount">0/500</div>
+                </div>
+
+                <div class="form-section">
+                    <div class="terms-box">
+                        <div class="checkbox-container">
+                            <input type="checkbox" id="termsCheckbox" class="checkbox-input" required>
+                            <label for="termsCheckbox" class="checkbox-box"></label>
+                            <span class="checkbox-text">I agree to the <a href="#">Terms of Service</a> and community guidelines</span>
+                        </div>
+                        <div class="checkbox-container">
+                            <input type="checkbox" id="privacyCheckbox" class="checkbox-input" required>
+                            <label for="privacyCheckbox" class="checkbox-box"></label>
+                            <span class="checkbox-text">I agree to the <a href="#">Privacy Policy</a> and data processing</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary btn-lg">
+                        <i class="fas fa-rocket"></i>
+                        Start Chatting
+                    </button>
+                    <button type="button" class="btn btn-outline" id="skipRegistration">
+                        Skip for Now
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ========== VIDEO CHAT SCREEN ========== -->
+    <div class="screen" id="videoChatScreen">
+        <div class="chat-header">
+            <button class="back-btn">
+                <i class="fas fa-arrow-left"></i>
+            </button>
+            <div class="call-info">
+                <h3 id="partnerName">Sarah_23</h3>
+                <div class="call-stats">
+                    <span id="callTimer">00:00</span>
+                    <span id="callQuality">Good Connection</span>
+                </div>
             </div>
-          </div>
+            <button class="btn-icon" id="moreOptions">
+                <i class="fas fa-ellipsis-v"></i>
+            </button>
         </div>
-      </div>
+
+        <div class="video-chat-container">
+            <div class="remote-video-wrapper" id="remoteVideoWrapper">
+                <video id="remoteVideo" autoplay playsinline></video>
+                <div class="video-overlay">
+                    <div class="user-info-overlay">
+                        <div class="user-avatar">
+                            <img src="https://i.pravatar.cc/150?img=5" alt="Partner">
+                        </div>
+                        <div class="user-details">
+                            <h4 id="partnerNameOverlay">Sarah_23</h4>
+                            <div class="user-meta">
+                                <span class="country-flag">🇬🇧</span>
+                                <span class="gender-icon female" id="partnerGender">♀</span>
+                                <span id="partnerAge">23</span>
+                                <span class="status-dot online"></span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="connection-status" id="connectionStatus">
+                        <div class="loading-spinner"></div>
+                        <p>Connecting...</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="local-video-wrapper">
+                <video id="localVideo" autoplay playsinline muted></video>
+                <div class="local-video-overlay">
+                    <span class="video-label">You</span>
+                    <button class="pip-control-btn">
+                        <i class="fas fa-expand"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="call-controls-panel">
+            <div class="control-group">
+                <button class="control-btn" id="toggleEffects">
+                    <i class="fas fa-magic"></i>
+                </button>
+                <button class="control-btn" id="toggleFilters">
+                    <i class="fas fa-snowflake"></i>
+                </button>
+                <button class="control-btn" id="toggleBackground">
+                    <i class="fas fa-image"></i>
+                </button>
+            </div>
+            
+            <div class="control-group center-controls">
+                <button class="control-btn large" id="videoToggle">
+                    <i class="fas fa-video"></i>
+                    <span class="control-label">Video On</span>
+                </button>
+                <button class="control-btn large" id="audioToggle">
+                    <i class="fas fa-microphone"></i>
+                    <span class="control-label">Mic On</span>
+                </button>
+                <button class="control-btn large danger" id="endCall">
+                    <i class="fas fa-phone-slash"></i>
+                    <span class="control-label">End Call</span>
+                </button>
+                <button class="control-btn large" id="screenShare">
+                    <i class="fas fa-desktop"></i>
+                    <span class="control-label">Share Screen</span>
+                </button>
+                <button class="control-btn large" id="fullscreen">
+                    <i class="fas fa-expand"></i>
+                    <span class="control-label">Fullscreen</span>
+                </button>
+            </div>
+            
+            <div class="control-group">
+                <button class="control-btn" id="recordCall">
+                    <i class="fas fa-circle"></i>
+                </button>
+                <button class="control-btn" id="takeSnapshot">
+                    <i class="fas fa-camera"></i>
+                </button>
+                <button class="control-btn active" id="chatToggle">
+                    <i class="fas fa-comment"></i>
+                    <span class="control-label">Chat</span>
+                </button>
+                <button class="control-btn" id="sendGift">
+                    <i class="fas fa-gift"></i>
+                </button>
+            </div>
+        </div>
     </div>
 
-    <!-- Main Controls -->
-    <div class="main-controls">
-      <div class="control-group">
-        <button id="findBtn" class="control-btn primary large">
-          <i class="fas fa-search"></i>
-          <span>Find Partner</span>
-        </button>
+    <!-- ========== CHAT PANEL ========== -->
+    <div class="chat-panel" id="chatPanel">
+        <div class="chat-header">
+            <h3>Chat</h3>
+            <button class="close-btn">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
         
-        <button id="nextBtn" class="control-btn secondary" disabled>
-          <i class="fas fa-redo"></i>
-          <span>Next</span>
-        </button>
+        <div class="chat-messages" id="chatMessages">
+            <div class="message system">
+                You are now connected with Sarah_23. Say hello!
+            </div>
+            <div class="message received">
+                <div class="message-content">Hi there! How are you doing today? 😊</div>
+                <div class="message-time">14:30</div>
+            </div>
+            <div class="message sent">
+                <div class="message-content">I'm doing great! Thanks for asking. How about you?</div>
+                <div class="message-time">14:31</div>
+            </div>
+            <div class="message received">
+                <div class="message-content">I'm good too! Just looking to meet new people from around the world 🌍</div>
+                <div class="message-time">14:32</div>
+            </div>
+        </div>
         
-        <button id="disconnectBtn" class="control-btn danger" disabled>
-          <i class="fas fa-phone-slash"></i>
-          <span>End Call</span>
-        </button>
-      </div>
-      
-      <div class="control-group">
-        <button id="privateBtn" class="control-btn warning">
-          <i class="fas fa-lock"></i>
-          <span>Private Call</span>
-          <span class="badge">100 coins</span>
-        </button>
-        
-        <button id="watchAdBtn" class="control-btn success">
-          <i class="fas fa-ad"></i>
-          <span>Watch Ad</span>
-          <span class="badge">+20 coins</span>
-        </button>
-        
-        <button id="reportBtn" class="control-btn danger">
-          <i class="fas fa-flag"></i>
-          <span>Report</span>
-        </button>
-      </div>
+        <div class="chat-input-area">
+            <div class="input-tools">
+                <button class="btn-icon" id="emojiPicker">
+                    <i class="far fa-smile"></i>
+                </button>
+                <button class="btn-icon" id="attachFile">
+                    <i class="fas fa-paperclip"></i>
+                </button>
+                <button class="btn-icon" id="sendImage">
+                    <i class="fas fa-image"></i>
+                </button>
+                <button class="btn-icon" id="voiceMessage">
+                    <i class="fas fa-microphone"></i>
+                </button>
+            </div>
+            
+            <div class="message-input-wrapper">
+                <input type="text" id="messageInput" class="form-input" placeholder="Type your message...">
+                <button class="btn btn-primary send-btn" id="sendMessage">
+                    <i class="fas fa-paper-plane"></i>
+                </button>
+            </div>
+            
+            <input type="file" id="fileUpload" hidden accept="image/*,video/*,.pdf,.doc,.docx">
+        </div>
     </div>
 
-    <!-- Media Controls -->
-    <div class="media-controls">
-      <div class="media-group">
-        <label class="file-upload-btn">
-          <input id="imageUpload" type="file" accept="image/*,video/*" multiple>
-          <i class="fas fa-paperclip"></i>
-          <span>Send Media</span>
-        </label>
+    <!-- ========== TEXT CHAT SCREEN ========== -->
+    <div class="screen" id="textChatScreen">
+        <div class="chat-header">
+            <button class="back-btn">
+                <i class="fas fa-arrow-left"></i>
+            </button>
+            <div class="chat-partner-info">
+                <div class="partner-avatar avatar">
+                    <img src="https://i.pravatar.cc/150?img=8" alt="Partner">
+                </div>
+                <div class="partner-details">
+                    <h4>Mike_Traveler</h4>
+                    <div class="partner-status online">
+                        <i class="fas fa-circle"></i> Online
+                    </div>
+                </div>
+            </div>
+            <button class="btn-icon" id="textChatMenu">
+                <i class="fas fa-ellipsis-v"></i>
+            </button>
+        </div>
         
-        <button id="stickerBtn" class="media-btn">
-          <i class="fas fa-sticky-note"></i>
-          <span>Sticker</span>
-        </button>
+        <div class="text-chat-container">
+            <div class="chat-messages" id="textChatMessages">
+                <div class="message system">
+                    You matched with Mike_Traveler. Start chatting!
+                </div>
+                <div class="message received">
+                    <div class="message-content">Hey there! Nice to meet you 👋</div>
+                    <div class="message-time">10:15</div>
+                </div>
+                <div class="message sent">
+                    <div class="message-content">Hi Mike! How are you doing today?</div>
+                    <div class="message-time">10:16</div>
+                </div>
+                <div class="message received">
+                    <div class="message-content">I'm doing well, just got back from a trip to Japan! 🇯🇵</div>
+                    <div class="message-time">10:17</div>
+                </div>
+                <div class="message received">
+                    <div class="message-content">It was an amazing experience. The food, culture, everything was fantastic!</div>
+                    <div class="message-time">10:18</div>
+                </div>
+                <div class="message sent">
+                    <div class="message-content">Wow, that sounds incredible! I've always wanted to visit Japan. Any recommendations?</div>
+                    <div class="message-time">10:19</div>
+                </div>
+            </div>
+            
+            <div class="chat-input-area">
+                <div class="message-input-wrapper">
+                    <input type="text" id="textMessageInput" class="form-input" placeholder="Type a message...">
+                    <button class="btn btn-primary send-btn">
+                        <i class="fas fa-paper-plane"></i>
+                    </button>
+                </div>
+                <div class="input-tools">
+                    <button class="btn-icon">
+                        <i class="far fa-smile"></i>
+                    </button>
+                    <button class="btn-icon">
+                        <i class="fas fa-image"></i>
+                    </button>
+                    <button class="btn-icon">
+                        <i class="fas fa-gift"></i>
+                    </button>
+                    <button class="btn-icon">
+                        <i class="fas fa-ellipsis-h"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== SETTINGS SCREEN ========== -->
+    <div class="screen" id="settingsScreen">
+        <div class="settings-container">
+            <div class="registration-header">
+                <button class="back-btn">
+                    <i class="fas fa-arrow-left"></i>
+                </button>
+                <h2>Settings</h2>
+                <p>Customize your experience</p>
+            </div>
+            
+            <div class="settings-sections">
+                <div class="settings-section">
+                    <h3>Account</h3>
+                    <div class="settings-list">
+                        <a href="#" class="setting-item link">
+                            <div class="setting-info">
+                                <h4>Edit Profile</h4>
+                                <p>Update your personal information</p>
+                            </div>
+                            <i class="fas fa-chevron-right"></i>
+                        </a>
+                        
+                        <a href="#" class="setting-item link">
+                            <div class="setting-info">
+                                <h4>Privacy & Security</h4>
+                                <p>Manage your privacy settings</p>
+                            </div>
+                            <i class="fas fa-chevron-right"></i>
+                        </a>
+                        
+                        <a href="#" class="setting-item link">
+                            <div class="setting-info">
+                                <h4>Blocked Users</h4>
+                                <p>Manage your block list</p>
+                            </div>
+                            <i class="fas fa-chevron-right"></i>
+                        </a>
+                    </div>
+                </div>
+                
+                <div class="settings-section">
+                    <h3>Preferences</h3>
+                    <div class="settings-list">
+                        <div class="setting-item">
+                            <div class="setting-info">
+                                <h4>Theme</h4>
+                                <p>Dark / Light / Auto</p>
+                            </div>
+                            <select class="select-input" id="themeSelect">
+                                <option value="dark">Dark</option>
+                                <option value="light">Light</option>
+                                <option value="auto">Auto</option>
+                            </select>
+                        </div>
+                        
+                        <div class="setting-item">
+                            <div class="setting-info">
+                                <h4>Language</h4>
+                                <p>App language</p>
+                            </div>
+                            <select class="select-input" id="languageSelect">
+                                <option value="en">English</option>
+                                <option value="es">Español</option>
+                                <option value="fr">Français</option>
+                                <option value="de">Deutsch</option>
+                                <option value="hi">हिन्दी</option>
+                            </select>
+                        </div>
+                        
+                        <div class="setting-item">
+                            <div class="setting-info">
+                                <h4>Notifications</h4>
+                                <p>Receive app notifications</p>
+                            </div>
+                            <label class="switch">
+                                <input type="checkbox" id="notificationsToggle" checked>
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+                        
+                        <div class="setting-item">
+                            <div class="setting-info">
+                                <h4>Sounds</h4>
+                                <p>Play sounds for events</p>
+                            </div>
+                            <label class="switch">
+                                <input type="checkbox" id="soundsToggle" checked>
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+                        
+                        <div class="setting-item">
+                            <div class="setting-info">
+                                <h4>Vibration</h4>
+                                <p>Vibrate on notifications</p>
+                            </div>
+                            <label class="switch">
+                                <input type="checkbox" id="vibrationToggle" checked>
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="settings-section">
+                    <h3>Chat & Call Settings</h3>
+                    <div class="settings-list">
+                        <div class="setting-item">
+                            <div class="setting-info">
+                                <h4>Auto Accept Calls</h4>
+                                <p>Automatically accept incoming calls</p>
+                            </div>
+                            <label class="switch">
+                                <input type="checkbox" id="autoAcceptToggle">
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+                        
+                        <div class="setting-item">
+                            <div class="setting-info">
+                                <h4>Video Quality</h4>
+                                <p>Adjust call video quality</p>
+                            </div>
+                            <select class="select-input" id="videoQualitySelect">
+                                <option value="360p">360p (Low)</option>
+                                <option value="480p">480p (Medium)</option>
+                                <option value="720p" selected>720p (High)</option>
+                                <option value="1080p">1080p (Best)</option>
+                            </select>
+                        </div>
+                        
+                        <div class="setting-item">
+                            <div class="setting-info">
+                                <h4>Audio Quality</h4>
+                                <p>Adjust call audio quality</p>
+                            </div>
+                            <select class="select-input" id="audioQualitySelect">
+                                <option value="low">Low</option>
+                                <option value="medium">Medium</option>
+                                <option value="high" selected>High</option>
+                            </select>
+                        </div>
+                        
+                        <div class="setting-item">
+                            <div class="setting-info">
+                                <h4>Save Chat History</h4>
+                                <p>Automatically save conversations</p>
+                            </div>
+                            <label class="switch">
+                                <input type="checkbox" checked>
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="premium-section">
+                    <div class="premium-header">
+                        <i class="fas fa-crown"></i>
+                        <h3>Go Premium</h3>
+                    </div>
+                    <div class="premium-features">
+                        <div class="feature-item">
+                            <i class="fas fa-check-circle"></i>
+                            <span>Ad-free experience</span>
+                        </div>
+                        <div class="feature-item">
+                            <i class="fas fa-check-circle"></i>
+                            <span>Priority matching</span>
+                        </div>
+                        <div class="feature-item">
+                            <i class="fas fa-check-circle"></i>
+                            <span>Unlimited video calls</span>
+                        </div>
+                        <div class="feature-item">
+                            <i class="fas fa-check-circle"></i>
+                            <span>Advanced filters</span>
+                        </div>
+                    </div>
+                    <button class="btn-premium">
+                        <i class="fas fa-crown"></i>
+                        Upgrade to Premium - $9.99/month
+                    </button>
+                </div>
+                
+                <div class="settings-section">
+                    <div class="app-info">
+                        <div class="app-version">
+                            <h4>QuikChat Global</h4>
+                            <p>Version 2.0.0</p>
+                        </div>
+                        <div class="app-stats">
+                            <p>Made with ❤️ for global connections</p>
+                        </div>
+                    </div>
+                    
+                    <div class="settings-actions">
+                        <button class="btn btn-outline" id="clearDataBtn">
+                            <i class="fas fa-trash"></i>
+                            Clear App Data
+                        </button>
+                        <button class="btn btn-danger" id="logoutBtn">
+                            <i class="fas fa-sign-out-alt"></i>
+                            Logout
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== SIDE MENU ========== -->
+    <div class="side-menu" id="sideMenu">
+        <div class="menu-overlay"></div>
+        <div class="menu-content">
+            <div class="menu-header">
+                <div class="user-profile-menu">
+                    <div class="user-avatar-menu">
+                        <img src="https://i.pravatar.cc/150?img=3" alt="User">
+                    </div>
+                    <div class="user-info-menu">
+                        <h4>Your_Name</h4>
+                        <div class="user-status-menu online">
+                            <i class="fas fa-circle"></i> Online
+                        </div>
+                    </div>
+                </div>
+                <button class="btn-icon close-menu">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            
+            <div class="menu-items">
+                <a href="#" class="menu-item">
+                    <i class="fas fa-user"></i>
+                    <span>My Profile</span>
+                </a>
+                
+                <a href="#" class="menu-item">
+                    <i class="fas fa-users"></i>
+                    <span>My Friends</span>
+                    <span class="menu-badge">5</span>
+                </a>
+                
+                <a href="#" class="menu-item">
+                    <i class="fas fa-history"></i>
+                    <span>Chat History</span>
+                </a>
+                
+                <a href="#" class="menu-item">
+                    <i class="fas fa-star"></i>
+                    <span>Favorites</span>
+                </a>
+                
+                <a href="#" class="menu-item">
+                    <i class="fas fa-gift"></i>
+                    <span>Gifts</span>
+                    <span class="premium-badge">PRO</span>
+                </a>
+                
+                <div class="menu-divider"></div>
+                
+                <a href="#" class="menu-item">
+                    <i class="fas fa-coins"></i>
+                    <span>Buy Coins</span>
+                    <span class="menu-badge">NEW</span>
+                </a>
+                
+                <a href="#" class="menu-item">
+                    <i class="fas fa-crown"></i>
+                    <span>Go Premium</span>
+                    <span class="premium-badge">PRO</span>
+                </a>
+                
+                <div class="menu-divider"></div>
+                
+                <a href="#" class="menu-item">
+                    <i class="fas fa-question-circle"></i>
+                    <span>Help & Support</span>
+                </a>
+                
+                <a href="#" class="menu-item">
+                    <i class="fas fa-file-alt"></i>
+                    <span>Terms & Privacy</span>
+                </a>
+                
+                <a href="#" class="menu-item">
+                    <i class="fas fa-share-alt"></i>
+                    <span>Invite Friends</span>
+                </a>
+                
+                <a href="#" class="menu-item">
+                    <i class="fas fa-star"></i>
+                    <span>Rate App</span>
+                </a>
+            </div>
+            
+            <div class="menu-footer">
+                <div class="social-links">
+                    <a href="#" class="social-link">
+                        <i class="fab fa-facebook-f"></i>
+                    </a>
+                    <a href="#" class="social-link">
+                        <i class="fab fa-twitter"></i>
+                    </a>
+                    <a href="#" class="social-link">
+                        <i class="fab fa-instagram"></i>
+                    </a>
+                    <a href="#" class="social-link">
+                        <i class="fab fa-youtube"></i>
+                    </a>
+                </div>
+                <div class="copyright">
+                    © 2024 QuikChat Global. All rights reserved.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== MODALS ========== -->
+    <div class="modal-overlay" id="modalOverlay">
+        <!-- Partner Selection Modal -->
+        <div class="modal" id="partnerSelectionModal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3 class="modal-title">Choose Chat Type</h3>
+                    <button class="modal-close">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <div class="partner-options">
+                        <div class="option-card" data-type="random">
+                            <div class="option-icon">
+                                <i class="fas fa-random"></i>
+                            </div>
+                            <h4>Random Chat</h4>
+                            <p>Connect with a random stranger instantly</p>
+                        </div>
+                        
+                        <div class="option-card" data-type="country">
+                            <div class="option-icon">
+                                <i class="fas fa-globe"></i>
+                            </div>
+                            <h4>Country Filter</h4>
+                            <p>Chat with people from specific countries</p>
+                        </div>
+                        
+                        <div class="option-card" data-type="interest">
+                            <div class="option-icon">
+                                <i class="fas fa-heart"></i>
+                            </div>
+                            <h4>Interest Based</h4>
+                            <p>Match based on common interests</p>
+                        </div>
+                        
+                        <div class="option-card premium" data-type="premium">
+                            <div class="option-icon">
+                                <i class="fas fa-crown"></i>
+                            </div>
+                            <h4>Premium Chat</h4>
+                            <p>Connect with verified premium users</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" id="cancelSelection">Cancel</button>
+                    <button class="btn btn-primary" id="startChat">Start Chat</button>
+                </div>
+            </div>
+        </div>
         
-        <button id="audioBtn" class="media-btn">
-          <i class="fas fa-music"></i>
-          <span>Audio</span>
-        </button>
+        <!-- Incoming Call Modal -->
+        <div class="modal" id="incomingCallModal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3 class="modal-title">Incoming Call</h3>
+                </div>
+                <div class="modal-body">
+                    <div class="incoming-call-info">
+                        <div class="avatar avatar-xl">
+                            <img src="https://i.pravatar.cc/150?img=7" alt="Caller">
+                        </div>
+                        <h4 class="caller-name">JohnDoe</h4>
+                        <p class="caller-country">🇺🇸 United States</p>
+                        <p class="call-type">
+                            <i class="fas fa-video"></i> Video Call
+                        </p>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-danger reject-call">
+                        <i class="fas fa-phone-slash"></i>
+                        Decline
+                    </button>
+                    <button class="btn btn-success accept-call">
+                        <i class="fas fa-phone-alt"></i>
+                        Accept
+                    </button>
+                </div>
+            </div>
+        </div>
         
-        <button id="screenShareBtn" class="media-btn">
-          <i class="fas fa-desktop"></i>
-          <span>Share Screen</span>
-        </button>
-      </div>
+        <!-- Premium Modal -->
+        <div class="modal" id="premiumModal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3 class="modal-title">Go Premium</h3>
+                    <button class="modal-close">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <div class="premium-plans">
+                        <div class="premium-plan active">
+                            <div class="plan-header">
+                                <h4>Monthly</h4>
+                                <div class="plan-price">
+                                    <span class="price">$9.99</span>
+                                    <span class="period">/month</span>
+                                </div>
+                            </div>
+                            <div class="plan-features">
+                                <div class="feature-item">
+                                    <i class="fas fa-check"></i>
+                                    <span>Ad-free experience</span>
+                                </div>
+                                <div class="feature-item">
+                                    <i class="fas fa-check"></i>
+                                    <span>Priority matching</span>
+                                </div>
+                                <div class="feature-item">
+                                    <i class="fas fa-check"></i>
+                                    <span>Unlimited video calls</span>
+                                </div>
+                                <div class="feature-item">
+                                    <i class="fas fa-check"></i>
+                                    <span>Advanced filters</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="premium-plan">
+                            <div class="plan-header">
+                                <div class="plan-badge">BEST VALUE</div>
+                                <h4>Yearly</h4>
+                                <div class="plan-price">
+                                    <span class="price">$79.99</span>
+                                    <span class="period">/year</span>
+                                </div>
+                                <p class="plan-savings">Save 33%</p>
+                            </div>
+                            <div class="plan-features">
+                                <div class="feature-item">
+                                    <i class="fas fa-check"></i>
+                                    <span>Everything in Monthly</span>
+                                </div>
+                                <div class="feature-item">
+                                    <i class="fas fa-check"></i>
+                                    <span>Profile highlight</span>
+                                </div>
+                                <div class="feature-item">
+                                    <i class="fas fa-check"></i>
+                                    <span>Exclusive badges</span>
+                                </div>
+                                <div class="feature-item">
+                                    <i class="fas fa-check"></i>
+                                    <span>Priority support</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" id="restorePurchase">
+                        <i class="fas fa-history"></i>
+                        Restore Purchase
+                    </button>
+                    <button class="btn btn-premium" id="buyPremium">
+                        <i class="fas fa-crown"></i>
+                        Upgrade Now
+                    </button>
+                </div>
+            </div>
+        </div>
     </div>
 
-    <!-- Chat Section -->
-    <div class="chat-section">
-      <div class="chat-header">
-        <h3><i class="fas fa-comments"></i> Chat</h3>
-        <div class="chat-actions">
-          <button id="clearChat" class="icon-btn small">
-            <i class="fas fa-trash"></i>
-          </button>
-          <button id="toggleChat" class="icon-btn small">
-            <i class="fas fa-chevron-down"></i>
-          </button>
+    <!-- ========== LOADING OVERLAY ========== -->
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="loading-content">
+            <div class="loading-spinner-large"></div>
+            <h3 id="loadingTitle">Loading</h3>
+            <p id="loadingMessage">Please wait...</p>
         </div>
-      </div>
-      
-      <div id="chatBox" class="chat-box">
-        <div class="welcome-message">
-          <i class="fas fa-comment-dots"></i>
-          <p>Welcome to QuikChat! Start a conversation with your partner here.</p>
-        </div>
-      </div>
-      
-      <div class="chat-input-container">
-        <input id="chatInput" type="text" placeholder="Type your message..." maxlength="500">
-        <button id="sendChat" class="send-btn">
-          <i class="fas fa-paper-plane"></i>
-        </button>
-        <button id="emojiBtn" class="emoji-btn">
-          <i class="fas fa-smile"></i>
-        </button>
-      </div>
     </div>
 
-    <!-- Search Animation -->
-    <div id="searchAnim" class="search-overlay">
-      <div class="search-content">
-        <div class="search-animation">
-          <div class="pulse-circle"></div>
-          <div class="search-icon">
-            <i class="fas fa-search"></i>
-          </div>
+    <!-- ========== TOAST CONTAINER ========== -->
+    <div id="toastContainer"></div>
+
+    <!-- ========== INSTALL BUTTON ========== -->
+    <button class="btn btn-primary install-btn" id="installBtn" style="display: none;">
+        <i class="fas fa-download"></i>
+        Install App
+    </button>
+
+    <!-- ========== ADVERTISEMENT ========== -->
+    <div class="ad-container" style="display: none;">
+        <span class="ad-label">Advertisement</span>
+        <div class="ad-placeholder">
+            Advertisement
         </div>
-        <h3>Searching for Partner</h3>
-        <p>Looking for someone matching your preferences...</p>
-        <div class="search-stats">
-          <div class="stat">
-            <i class="fas fa-users"></i>
-            <span><span id="searchingCount">0</span> searching</span>
-          </div>
-          <div class="stat">
-            <i class="fas fa-clock"></i>
-            <span id="searchTime">0s</span>
-          </div>
-        </div>
-        <button id="cancelSearch" class="btn-secondary">
-          <i class="fas fa-times"></i> Cancel Search
-        </button>
-      </div>
     </div>
 
-    <!-- Notification Center -->
-    <div id="notificationCenter" class="notification-center"></div>
-  </div>
-
-  <!-- Footer -->
-  <footer class="main-footer">
-    <div class="footer-content">
-      <div class="footer-section">
-        <h4>QuikChat</h4>
-        <p>The next generation of random video chat with earning opportunities.</p>
-        <div class="social-links">
-          <a href="#"><i class="fab fa-twitter"></i></a>
-          <a href="#"><i class="fab fa-facebook"></i></a>
-          <a href="#"><i class="fab fa-instagram"></i></a>
-          <a href="#"><i class="fab fa-discord"></i></a>
-        </div>
-      </div>
-      
-      <div class="footer-section">
-        <h4>Quick Links</h4>
-        <ul>
-          <li><a href="/about">About Us</a></li>
-          <li><a href="/earn">How to Earn</a></li>
-          <li><a href="/safety">Safety Tips</a></li>
-          <li><a href="/blog">Blog</a></li>
-        </ul>
-      </div>
-      
-      <div class="footer-section">
-        <h4>Legal</h4>
-        <ul>
-          <li><a href="/terms">Terms of Service</a></li>
-          <li><a href="/privacy">Privacy Policy</a></li>
-          <li><a href="/cookies">Cookie Policy</a></li>
-          <li><a href="/community">Community Guidelines</a></li>
-        </ul>
-      </div>
-      
-      <div class="footer-section">
-        <h4>Support</h4>
-        <ul>
-          <li><a href="/help">Help Center</a></li>
-          <li><a href="/contact">Contact Us</a></li>
-          <li><a href="/report">Report Abuse</a></li>
-          <li><a href="/status">System Status</a></li>
-        </ul>
-      </div>
-    </div>
+    <!-- ========== SCRIPTS ========== -->
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script src="script.js"></script>
     
-    <div class="footer-bottom">
-      <p>&copy; 2024 QuikChat. All rights reserved. Made with <i class="fas fa-heart"></i> for the global community.</p>
-      <p class="disclaimer">QuikChat is for 18+ only. Use responsibly and respect others.</p>
-    </div>
-  </footer>
-
-  <!-- Scripts -->
-  <script src="/socket.io/socket.io.js"></script>
-  <script src="script.js"></script>
-  
-  <!-- Service Worker for PWA -->
-  <script>
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js').then(() => {
-        console.log('Service Worker registered');
-      });
-    }
-  </script>
+    <!-- PWA Service Worker Registration -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('sw.js').then(registration => {
+                    console.log('ServiceWorker registered: ', registration.scope);
+                }).catch(error => {
+                    console.log('ServiceWorker registration failed: ', error);
+                });
+            });
+        }
+    </script>
 </body>
-    </html>
+            </html>
